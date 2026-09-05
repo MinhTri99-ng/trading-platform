@@ -1,0 +1,45 @@
+{
+  "aggregate_metrics": {
+    "aggregate_oos_trades": 0,
+    "total_windows": 1
+  },
+  "conclusions": [],
+  "oos_drawdown_distribution": {},
+  "oos_return_distribution": {},
+  "parameter_stability": [],
+  "regime_summary": {},
+  "windows": [
+    {
+      "aggregate_oos_trades": 0,
+      "average_r": "0",
+      "consecutive_losses": 0,
+      "expectancy": "0",
+      "fees": "0",
+      "frozen_parameters": {
+        "atr_buffer": "0.1",
+        "ema": 50,
+        "retest_zone": "0.25",
+        "rr": "1.5",
+        "volume_multiplier": "1.0"
+      },
+      "max_drawdown": "0",
+      "net_profit": "0",
+      "oos_trades": 0,
+      "profit_factor": "0",
+      "regime": "SIDEWAYS",
+      "selected_parameters": {
+        "atr_buffer": "0.1",
+        "ema": 50,
+        "retest_zone": "0.25",
+        "rr": "1.5",
+        "volume_multiplier": "1.0"
+      },
+      "test_end": "2024-01-01T03:00:00+00:00",
+      "test_start": "2024-01-01T03:00:00+00:00",
+      "train_end": "2024-01-01T01:00:00+00:00",
+      "train_start": "2024-01-01T00:00:00+00:00",
+      "win_rate": "0",
+      "window_id": 1
+    }
+  ]
+}

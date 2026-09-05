@@ -1,0 +1,13 @@
+{
+  "strategyName": "default",
+  "strategyVersion": "v1",
+  "emaFast": 12,
+  "emaSlow": 26,
+  "rsiPeriod": 14,
+  "rsiOverbought": 70,
+  "rsiOversold": 30,
+  "atrMultiplier": 1.5,
+  "riskReward": 1.5,
+  "riskPercent": 1.0,
+  "active": true
+}
