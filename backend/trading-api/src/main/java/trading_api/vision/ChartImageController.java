@@ -76,7 +76,9 @@ public class ChartImageController {
             response.put("pattern", metadata.pattern());
             response.put("indicatorsVisible", metadata.indicatorsVisible());
             response.put("marketSnapshot", result.marketSnapshot());
-            response.put("verification", result.valid() ? "Verified with Live Market Data" : result.status());
+                response.put("verification", result.valid() && !"MOCK_VERIFIED".equals(result.status())
+                    ? "Verified with Live Market Data"
+                    : result.status());
             response.put("sourceOfTruth", "Binance / Market API");
                 response.put("vision", Map.of(
                     "status", metadata.visionStatus(),

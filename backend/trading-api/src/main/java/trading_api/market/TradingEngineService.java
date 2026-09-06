@@ -35,7 +35,16 @@ public class TradingEngineService {
         String timeframe = verificationResult.verifiedTimeframe() != null ? verificationResult.verifiedTimeframe() : metadata.timeframe();
 
         log.info("[STRATEGY] symbol={} timeframe={}", symbol, timeframe);
-        List<BigDecimal> priceRange = marketDataService.getLatestPriceRange(symbol, timeframe);
+        List<BigDecimal> priceRange;
+        try {
+            priceRange = marketDataService.getLatestPriceRange(symbol, timeframe);
+        } catch (RuntimeException ex) {
+            log.warn("[Trading engine] Market data unavailable; using image-analysis fallback: symbol={}, timeframe={}", symbol, timeframe, ex);
+            priceRange = List.of();
+        }
+        if (priceRange == null) {
+            priceRange = List.of();
+        }
         BigDecimal marketLow = priceRange.size() > 0 ? priceRange.get(0) : BigDecimal.valueOf(metadata.estimatedPriceLow() != null ? metadata.estimatedPriceLow() : 1000);
         BigDecimal marketHigh = priceRange.size() > 1 ? priceRange.get(1) : BigDecimal.valueOf(metadata.estimatedPriceHigh() != null ? metadata.estimatedPriceHigh() : 1100);
 

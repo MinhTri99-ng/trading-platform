@@ -139,7 +139,7 @@ class ChartImagePipelineTest {
     }
 
     @Test
-    void marketDataUnavailableReturnsClearFailureState() {
+    void marketDataUnavailableUsesMockVerifiedFallback() {
         MarketDataService marketDataService = Mockito.mock(MarketDataService.class);
         Mockito.when(marketDataService.getLatestPriceRange("BTCUSDT", "1d")).thenReturn(List.of());
 
@@ -148,8 +148,10 @@ class ChartImagePipelineTest {
 
         ChartImageVerificationResult result = verificationService.verify(metadata);
 
-        assertThat(result.status()).isEqualTo("MARKET_DATA_UNAVAILABLE");
-        assertThat(result.valid()).isFalse();
+        assertThat(result.status()).isEqualTo("MOCK_VERIFIED");
+        assertThat(result.valid()).isTrue();
+        assertThat(result.verifiedSymbol()).isEqualTo("BTCUSDT");
+        assertThat(result.marketSnapshot()).contains("source=IMAGE_ANALYSIS_FALLBACK");
     }
 
     @Test
