@@ -96,6 +96,8 @@ const STORAGE_KEYS = {
   tradeHistory: "trading-platform-trade-history",
 };
 
+const API_BASE_URL = (import.meta.env.VITE_API_URL?.trim() || "http://localhost:8080").replace(/\/$/, "");
+
 const readTradeHistory = (): TradeHistoryEntry[] => {
   try {
     const value = localStorage.getItem(STORAGE_KEYS.tradeHistory);
@@ -267,12 +269,12 @@ function App() {
         filename: file.name,
         contentType: file.type,
         size: file.size,
-        endpoint: "http://localhost:8080/api/vision/analyze",
+        endpoint: `${API_BASE_URL}/api/vision/analyze`,
         selectedSymbol,
         selectedTimeframe,
       });
 
-      const response = await fetch("http://localhost:8080/api/vision/analyze", {
+      const response = await fetch(`${API_BASE_URL}/api/vision/analyze`, {
         method: "POST",
         body: formData,
       });

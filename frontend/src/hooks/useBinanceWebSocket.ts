@@ -37,6 +37,17 @@ export interface UseBinanceWebSocketResult {
 
 const DEFAULT_INTERVAL = "1h";
 const DEFAULT_MAX_CANDLES = 500;
+const BINANCE_WEBSOCKET_URL = "wss://stream.binance.com:9443/ws";
+
+const getApiUrl = () => {
+  const configuredUrl = import.meta.env.VITE_API_URL?.trim();
+  if (!configuredUrl) {
+    return "http://localhost:8080";
+  }
+  return configuredUrl.replace(/\/$/, "");
+};
+
+const toWebSocketUrl = (apiUrl: string) => apiUrl.replace(/^https:/i, "wss:").replace(/^http:/i, "ws:");
 
 const toNumber = (value: unknown): number => {
   const parsed = Number(value);
@@ -179,7 +190,8 @@ export function useBinanceWebSocket({
 
     let isUnmounted = false;
     const normalizedInterval = normalizeInterval(interval);
-    const wsUrl = `wss://stream.binance.com:9443/ws/${normalizedSymbol.toLowerCase()}@kline_${normalizedInterval}`;
+    const configuredWebSocketUrl = `${toWebSocketUrl(getApiUrl())}/ws/${normalizedSymbol.toLowerCase()}@kline_${normalizedInterval}`;
+    const binanceWebSocketUrl = `${BINANCE_WEBSOCKET_URL}/${normalizedSymbol.toLowerCase()}@kline_${normalizedInterval}`;
 
     const applyHistory = async () => {
       try {
@@ -211,10 +223,11 @@ export function useBinanceWebSocket({
       }
     };
 
-    const connect = () => {
+    const connect = (useBinanceFallback = false) => {
       if (isUnmounted) return;
 
-      const socket = new WebSocket(wsUrl);
+      const socketUrl = useBinanceFallback ? binanceWebSocketUrl : configuredWebSocketUrl;
+      const socket = new WebSocket(socketUrl);
       socketRef.current = socket;
 
       socket.onopen = () => {
@@ -249,20 +262,20 @@ export function useBinanceWebSocket({
         }
       };
 
-      socket.onerror = () => {
-        if (!isUnmounted) {
-          setIsConnected(false);
-        }
-      };
-
       socket.onclose = () => {
         if (!isUnmounted) {
           setIsConnected(false);
           reconnectRef.current = window.setTimeout(() => {
             if (!isUnmounted) {
-              connect();
+              connect(true);
             }
           }, 1500);
+        }
+      };
+
+      socket.onerror = () => {
+        if (!isUnmounted) {
+          setIsConnected(false);
         }
       };
     };

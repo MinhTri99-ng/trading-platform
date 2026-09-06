@@ -34,6 +34,11 @@ export interface MarketSignal {
 
 const normalizeSymbol = (symbol: string) => symbol.replace(/\s+/g, "").replace("/", "").toUpperCase();
 
+const getApiUrl = () => {
+  const configuredUrl = import.meta.env.VITE_API_URL?.trim();
+  return (configuredUrl || "http://localhost:8080").replace(/\/$/, "");
+};
+
 const parseTimestamp = (value: unknown): number => {
   if (typeof value === "number" && Number.isFinite(value)) {
     return value < 1e12 ? value * 1000 : value;
@@ -111,7 +116,7 @@ export function useMarketRealtime({ symbolCode, interval }: { symbolCode: string
   useEffect(() => {
     const normalizedSymbol = normalizeSymbol(symbolCode);
     const normalizedInterval = interval.toLowerCase();
-    const baseUrl = `http://localhost:8080`;
+    const baseUrl = getApiUrl();
 
     let cancelled = false;
     let stompClient: Client | null = null;

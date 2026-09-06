@@ -57,6 +57,10 @@ public class ChartImageController {
 
             log.info("[VERIFICATION REQUEST] symbol={} timeframe={}", metadata.symbol(), metadata.timeframe());
             ChartImageVerificationResult result = verificationService.verify(metadata);
+            if (!result.valid()) {
+                log.error("[IMAGE VERIFICATION FAILED] status={} reason={} symbol={} timeframe={} marketSnapshot={}",
+                        result.status(), result.reason(), result.verifiedSymbol(), result.verifiedTimeframe(), result.marketSnapshot());
+            }
 
             TradingSignalPayload generatedSignal = null;
             if (result.valid()) {
