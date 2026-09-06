@@ -15,3 +15,11 @@ app:
   jwt:
     secret: ${JWT_SECRET:change-this-development-secret-to-at-least-32-characters}
     expiration-ms: ${JWT_EXPIRATION_MS:86400000}
+
+market:
+  fallback-prices:
+    BTCUSDT: 77500
+    ETHUSDT: 3500
+    SOLUSDT: 180
+    EURUSD: 1.08
+    GBPUSD: 1.27

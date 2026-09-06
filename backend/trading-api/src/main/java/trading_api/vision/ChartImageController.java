@@ -68,9 +68,14 @@ public class ChartImageController {
             }
 
             Map<String, Object> response = new LinkedHashMap<>();
-            response.put("status", result.status());
+                String responseStatus = result.valid() && generatedSignal == null
+                    ? "NO_PRICE_DATA"
+                    : result.status();
+                response.put("status", responseStatus);
             response.put("valid", result.valid());
-            response.put("reason", result.reason());
+                response.put("reason", generatedSignal == null && result.valid()
+                    ? "No reliable price data available from image, live providers, or configured fallback"
+                    : result.reason());
             response.put("symbol", result.verifiedSymbol());
             response.put("timeframe", result.verifiedTimeframe());
             response.put("pattern", metadata.pattern());

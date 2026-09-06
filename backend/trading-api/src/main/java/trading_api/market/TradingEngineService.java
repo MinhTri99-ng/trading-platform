@@ -10,19 +10,25 @@ import trading_api.websocket.TradingSignalPayload;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.util.List;
+import java.util.Map;
 import java.util.Locale;
+import java.util.Optional;
 
 @Service
 public class TradingEngineService {
     private static final Logger log = LoggerFactory.getLogger(TradingEngineService.class);
 
-    private final MarketDataService marketDataService;
+    private final PriceServiceRegistry priceServiceRegistry;
     private final SimpMessagingTemplate messagingTemplate;
+    private final Map<String, BigDecimal> fallbackPrices;
 
-    public TradingEngineService(MarketDataService marketDataService, SimpMessagingTemplate messagingTemplate) {
-        this.marketDataService = marketDataService;
+    public TradingEngineService(
+            PriceServiceRegistry priceServiceRegistry,
+            MarketProperties marketProperties,
+            SimpMessagingTemplate messagingTemplate) {
+        this.priceServiceRegistry = priceServiceRegistry;
         this.messagingTemplate = messagingTemplate;
+        this.fallbackPrices = marketProperties.getFallbackPrices();
     }
 
     public TradingSignalPayload processSignal(ChartImageMetadata metadata, ChartImageVerificationResult verificationResult) {
@@ -35,34 +41,24 @@ public class TradingEngineService {
         String timeframe = verificationResult.verifiedTimeframe() != null ? verificationResult.verifiedTimeframe() : metadata.timeframe();
 
         log.info("[STRATEGY] symbol={} timeframe={}", symbol, timeframe);
-        List<BigDecimal> priceRange;
-        try {
-            priceRange = marketDataService.getLatestPriceRange(symbol, timeframe);
-        } catch (RuntimeException ex) {
-            log.warn("[Trading engine] Market data unavailable; using image-analysis fallback: symbol={}, timeframe={}", symbol, timeframe, ex);
-            priceRange = List.of();
-        }
-        if (priceRange == null) {
-            priceRange = List.of();
-        }
-        BigDecimal marketLow = priceRange.size() > 0 ? priceRange.get(0) : BigDecimal.valueOf(metadata.estimatedPriceLow() != null ? metadata.estimatedPriceLow() : 1000);
-        BigDecimal marketHigh = priceRange.size() > 1 ? priceRange.get(1) : BigDecimal.valueOf(metadata.estimatedPriceHigh() != null ? metadata.estimatedPriceHigh() : 1100);
-
-        if (marketLow.compareTo(BigDecimal.ZERO) <= 0) {
-            marketLow = BigDecimal.valueOf(1);
-        }
-        if (marketHigh.compareTo(marketLow) <= 0) {
-            marketHigh = marketLow.multiply(BigDecimal.valueOf(1.02));
+        BigDecimal entry = imagePrice(metadata)
+                .or(() -> priceServiceRegistry.getLivePrice(symbol))
+                .or(() -> Optional.ofNullable(fallbackPrices.get(symbol)))
+                .orElseGet(() -> {
+                    log.warn("[Trading engine] No reliable price available: symbol={}, timeframe={}", symbol, timeframe);
+                    return null;
+                });
+        if (entry == null || entry.compareTo(BigDecimal.ZERO) <= 0) {
+            return null;
         }
 
         String direction = inferDirection(metadata.pattern());
-        BigDecimal entry = marketLow.add(marketHigh).divide(BigDecimal.valueOf(2), 8, RoundingMode.HALF_UP);
         BigDecimal stopLoss = "LONG".equals(direction)
-                ? marketLow.multiply(BigDecimal.valueOf(0.995))
-                : marketHigh.multiply(BigDecimal.valueOf(1.005));
+                ? entry.multiply(BigDecimal.valueOf(0.98))
+                : entry.multiply(BigDecimal.valueOf(1.02));
         BigDecimal takeProfit = "LONG".equals(direction)
-                ? entry.multiply(BigDecimal.valueOf(1.018))
-                : entry.multiply(BigDecimal.valueOf(0.982));
+                ? entry.multiply(BigDecimal.valueOf(1.05))
+                : entry.multiply(BigDecimal.valueOf(0.95));
 
         BigDecimal riskDistance = entry.subtract(stopLoss).abs();
         BigDecimal rewardDistance = takeProfit.subtract(entry).abs();
@@ -98,6 +94,17 @@ public class TradingEngineService {
             return "SHORT";
         }
         return "LONG";
+    }
+
+    private Optional<BigDecimal> imagePrice(ChartImageMetadata metadata) {
+        if (metadata.estimatedPriceLow() == null || metadata.estimatedPriceHigh() == null
+                || metadata.estimatedPriceLow() <= 0 || metadata.estimatedPriceHigh() <= 0
+                || metadata.estimatedPriceHigh() < metadata.estimatedPriceLow()) {
+            return Optional.empty();
+        }
+        return Optional.of(BigDecimal.valueOf(metadata.estimatedPriceLow())
+                .add(BigDecimal.valueOf(metadata.estimatedPriceHigh()))
+                .divide(BigDecimal.valueOf(2), 8, RoundingMode.HALF_UP));
     }
 
     private int computeConfidence(ChartImageMetadata metadata, String direction) {

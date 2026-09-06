@@ -6,8 +6,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import trading_api.market.MarketDataService;
+import trading_api.market.MarketProperties;
+import trading_api.market.PriceServiceRegistry;
 import trading_api.market.TradingEngineService;
 import trading_api.vision.ChartImageController;
+import trading_api.websocket.TradingSignalPayload;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
@@ -202,7 +205,8 @@ class ChartImagePipelineTest {
         Mockito.when(marketDataService.getLatestPriceRange("BTCUSDT", "1m")).thenReturn(List.of(BigDecimal.valueOf(78123.09), BigDecimal.valueOf(79220.61)));
 
         SimpMessagingTemplate messagingTemplate = Mockito.mock(SimpMessagingTemplate.class);
-        TradingEngineService tradingEngineService = new TradingEngineService(marketDataService, messagingTemplate);
+        TradingEngineService tradingEngineService = new TradingEngineService(
+            Mockito.mock(PriceServiceRegistry.class), marketProperties(), messagingTemplate);
         ChartImageController controller = new ChartImageController(new VisionService(), new ChartImageVerificationService(marketDataService), tradingEngineService);
 
         MockMultipartFile file = new MockMultipartFile("file", "60b88e3f8c7b0c25556a.jpg", "image/jpeg", createPngBytes());
@@ -216,13 +220,66 @@ class ChartImagePipelineTest {
     }
 
         @Test
+        void btcSignalUsesReferencePriceAndPercentageRiskWhenMarketDataIsUnavailable() {
+        MarketDataService marketDataService = Mockito.mock(MarketDataService.class);
+        Mockito.when(marketDataService.getLatestPriceRange("BTCUSDT", "1h")).thenReturn(List.of());
+        TradingEngineService tradingEngineService = new TradingEngineService(
+            Mockito.mock(PriceServiceRegistry.class),
+            marketProperties(),
+            Mockito.mock(SimpMessagingTemplate.class)
+        );
+
+        ChartImageMetadata metadata = new ChartImageMetadata(
+            "BTCUSDT", "1h", "Bullish trend", List.of(), "", null, null, 0.8
+        );
+        ChartImageVerificationResult verification = new ChartImageVerificationResult(
+            true, "VERIFIED", "", metadata, "BTCUSDT", "1h", ""
+        );
+
+        TradingSignalPayload signal = tradingEngineService.processSignal(metadata, verification);
+
+        assertThat(signal.entry()).isEqualByComparingTo("77500");
+        assertThat(signal.stopLoss()).isEqualByComparingTo("75950.00");
+        assertThat(signal.takeProfit()).isEqualByComparingTo("81375.00");
+        assertThat(signal.riskReward()).isEqualTo("1:2.50");
+        }
+
+        @Test
+        void btcShortSignalUsesPercentageRiskFromEntry() {
+        MarketDataService marketDataService = Mockito.mock(MarketDataService.class);
+        PriceServiceRegistry priceServiceRegistry = Mockito.mock(PriceServiceRegistry.class);
+        Mockito.when(priceServiceRegistry.getLivePrice("BTCUSDT"))
+            .thenReturn(java.util.Optional.of(BigDecimal.valueOf(78500)));
+        TradingEngineService tradingEngineService = new TradingEngineService(
+            priceServiceRegistry,
+            marketProperties(),
+            Mockito.mock(SimpMessagingTemplate.class)
+        );
+
+        ChartImageMetadata metadata = new ChartImageMetadata(
+            "BTCUSDT", "1h", "Bearish trend", List.of(), "", null, null, 0.8
+        );
+        ChartImageVerificationResult verification = new ChartImageVerificationResult(
+            true, "VERIFIED", "", metadata, "BTCUSDT", "1h", ""
+        );
+
+        TradingSignalPayload signal = tradingEngineService.processSignal(metadata, verification);
+
+        assertThat(signal.entry()).isEqualByComparingTo("78500");
+        assertThat(signal.stopLoss()).isEqualByComparingTo("80070.00");
+        assertThat(signal.takeProfit()).isEqualByComparingTo("74575.00");
+        assertThat(signal.riskReward()).isEqualTo("1:2.50");
+        }
+
+        @Test
         void realWorldJpegRegressionKeepsOneMinuteTimeframe() throws IOException {
         MarketDataService marketDataService = Mockito.mock(MarketDataService.class);
         Mockito.when(marketDataService.getLatestPriceRange("BTCUSDT", "1m"))
             .thenReturn(List.of(BigDecimal.valueOf(78123.09), BigDecimal.valueOf(79220.61)));
 
         TradingEngineService tradingEngineService = new TradingEngineService(
-            marketDataService,
+            Mockito.mock(PriceServiceRegistry.class),
+            marketProperties(),
             Mockito.mock(SimpMessagingTemplate.class)
         );
         ChartImageController controller = new ChartImageController(
@@ -293,7 +350,8 @@ class ChartImagePipelineTest {
         Mockito.when(marketDataService.getLatestPriceRange("BTCUSDT", "1m")).thenReturn(List.of(BigDecimal.valueOf(78123.09), BigDecimal.valueOf(79220.61)));
 
         SimpMessagingTemplate messagingTemplate = Mockito.mock(SimpMessagingTemplate.class);
-        TradingEngineService tradingEngineService = new TradingEngineService(marketDataService, messagingTemplate);
+        TradingEngineService tradingEngineService = new TradingEngineService(
+            Mockito.mock(PriceServiceRegistry.class), marketProperties(), messagingTemplate);
         ChartImageController controller = new ChartImageController(new VisionService(), new ChartImageVerificationService(marketDataService), tradingEngineService);
 
         MockMultipartFile file = new MockMultipartFile("file", "BTCUSDT_1m.png", "image/png", createPngBytes());
@@ -305,6 +363,18 @@ class ChartImagePipelineTest {
         assertThat(body.get("symbol")).isEqualTo("BTCUSDT");
         assertThat(body.get("timeframe")).isEqualTo("1m");
         Mockito.verify(marketDataService, Mockito.atLeastOnce()).getLatestPriceRange("BTCUSDT", "1m");
+    }
+
+    private MarketProperties marketProperties() {
+        MarketProperties properties = new MarketProperties();
+        properties.setFallbackPrices(Map.of(
+                "BTCUSDT", BigDecimal.valueOf(77500),
+                "ETHUSDT", BigDecimal.valueOf(3500),
+                "SOLUSDT", BigDecimal.valueOf(180),
+                "EURUSD", BigDecimal.valueOf(1.08),
+                "GBPUSD", BigDecimal.valueOf(1.27)
+        ));
+        return properties;
     }
 
     private byte[] createPngBytes() throws IOException {
