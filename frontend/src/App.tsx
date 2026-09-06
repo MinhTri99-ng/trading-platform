@@ -398,7 +398,7 @@ function App() {
   return (
     <div className="min-h-screen bg-[#0B0E14] text-slate-100">
       <header className="sticky top-0 z-50 border-b border-slate-800/90 bg-[#0B0E14]/90 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-[1700px] items-center justify-between gap-4 px-4 py-3.5 xl:px-6">
+        <div className="mx-auto flex max-w-[1700px] items-center justify-between gap-4 overflow-x-auto whitespace-nowrap px-4 py-3.5 xl:px-6">
           <div className="flex min-w-0 items-center gap-4">
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 via-cyan-500 to-indigo-500 shadow-[0_0_20px_rgba(59,130,246,0.45)]">
@@ -489,7 +489,7 @@ function App() {
       </header>
 
       <div className="mx-auto max-w-[1700px] px-4 pb-12 pt-5 xl:px-6">
-        <div className="flex gap-4">
+        <div className="flex flex-col lg:flex-row w-full gap-4">
           <aside className="hidden w-[260px] shrink-0 flex-col rounded-[22px] border border-slate-800 bg-[#121721] p-3 lg:flex">
             <div className="mb-5 px-2 pt-1">
               <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">{t("dashboard.tradeHistory")}</p>
@@ -737,7 +737,7 @@ function App() {
             </div>
           </div>
 
-          <aside className="hidden w-[320px] shrink-0 flex-col gap-4 xl:flex">
+          <aside className="w-full lg:w-1/3 block shrink-0 flex-col gap-4">
             <div className="rounded-[24px] border border-slate-800 bg-[#121721] p-4">
               <div className="mb-4 flex items-center justify-between">
                 <div className="flex items-center gap-2 text-sm font-semibold text-slate-100">
