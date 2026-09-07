@@ -412,25 +412,22 @@ function App() {
               </div>
             </div>
 
-            <div className="hidden items-center gap-2 md:flex">
-              {quickSymbols.map((symbol) => {
-                const active = symbol === selectedSymbol;
-                return (
-                  <button
-                    key={symbol}
-                    type="button"
-                    onClick={() => setSelectedSymbol(symbol)}
-                    className={`rounded-xl border px-3 py-1.5 text-[11px] font-medium transition ${
-                      active
-                        ? "border-blue-500/40 bg-blue-500/10 text-blue-200"
-                        : "border-slate-800 bg-slate-900/70 text-slate-400 hover:border-slate-700 hover:text-slate-200"
-                    }`}
-                  >
+            <label className="relative shrink-0">
+              <span className="sr-only">Chọn cặp giao dịch</span>
+              <select
+                aria-label="Chọn cặp giao dịch"
+                value={selectedSymbol}
+                onChange={(event) => setSelectedSymbol(event.target.value)}
+                className="appearance-none rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-2 pr-8 text-sm font-medium text-slate-200 outline-none transition hover:border-slate-700 focus:border-blue-500"
+              >
+                {quickSymbols.map((symbol) => (
+                  <option key={symbol} value={symbol}>
                     {symbol}
-                  </button>
-                );
-              })}
-            </div>
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+            </label>
           </div>
 
           <div className="hidden shrink-0 items-center gap-5 lg:flex">
