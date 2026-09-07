@@ -400,8 +400,8 @@ function App() {
   return (
     <div className="min-h-screen bg-[#0B0E14] text-slate-100">
       <header className="sticky top-0 z-50 border-b border-slate-800/90 bg-[#0B0E14]/90 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-[1700px] items-center justify-between gap-4 overflow-x-auto whitespace-nowrap px-4 py-3.5 xl:px-6">
-          <div className="flex min-w-0 items-center gap-4">
+        <div className="mx-auto flex min-w-max max-w-[1700px] items-center justify-between gap-4 overflow-x-auto whitespace-nowrap px-4 py-3.5 xl:px-6">
+          <div className="flex shrink-0 min-w-0 items-center gap-4">
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 via-cyan-500 to-indigo-500 shadow-[0_0_20px_rgba(59,130,246,0.45)]">
                 <CandlestickChart className="h-4 w-4 text-white" />
@@ -433,24 +433,24 @@ function App() {
             </div>
           </div>
 
-          <div className="hidden items-center gap-5 lg:flex">
-            <div className="flex items-center gap-3 rounded-full border border-slate-800 bg-slate-900/80 px-3 py-1.5">
+          <div className="hidden shrink-0 items-center gap-5 lg:flex">
+            <div className="flex shrink-0 whitespace-nowrap items-center gap-3 rounded-full border border-slate-800 bg-slate-900/80 px-3 py-1.5">
               <span className="text-[10px] uppercase tracking-[0.18em] text-slate-500">{t("nav.marketCap")}</span>
               <span className="text-sm font-semibold text-slate-100">$2.41T</span>
               <span className="text-xs font-medium text-emerald-300">+1.8%</span>
             </div>
-            <div className="flex items-center gap-3 rounded-full border border-slate-800 bg-slate-900/80 px-3 py-1.5">
+            <div className="flex shrink-0 whitespace-nowrap items-center gap-3 rounded-full border border-slate-800 bg-slate-900/80 px-3 py-1.5">
               <span className="text-[10px] uppercase tracking-[0.18em] text-slate-500">{t("nav.btcDom")}</span>
               <span className="text-sm font-semibold text-slate-100">54.2%</span>
               <span className="text-xs font-medium text-emerald-300">+0.3%</span>
             </div>
-            <div className="flex items-center gap-3 rounded-full border border-slate-800 bg-slate-900/80 px-3 py-1.5">
+            <div className="flex shrink-0 whitespace-nowrap items-center gap-3 rounded-full border border-slate-800 bg-slate-900/80 px-3 py-1.5">
               <span className="text-[10px] uppercase tracking-[0.18em] text-slate-500">{t("nav.volume24h")}</span>
               <span className="text-sm font-semibold text-slate-100">$98.4B</span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
             <button className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-800 bg-slate-900/80 text-slate-200 transition hover:border-slate-700">
               <Search className="h-4 w-4" />
             </button>
