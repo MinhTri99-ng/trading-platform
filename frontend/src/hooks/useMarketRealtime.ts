@@ -268,16 +268,27 @@ export function useMarketRealtime({ symbolCode, interval }: { symbolCode: string
               setIsConnected(false);
             }
           },
-     onWebSocketClose: () => {
+          onWebSocketClose: () => {
             if (!cancelled) {
               console.warn(`[CHART WS RECONNECTING] symbol=${normalizedSymbol} timeframe=${normalizedInterval}`);
               setIsConnected(false);
+              setTimeout(() => {
+                if (!cancelled && !stompClient?.active) {
+                  stompClient?.activate();
+                }
+              }, 3000);
             }
           },
           onStompError: () => {
             if (!cancelled) {
               console.warn(`[CHART WS RECONNECTING] symbol=${normalizedSymbol} timeframe=${normalizedInterval}`);
               setIsConnected(false);
+              stompClient?.deactivate();
+              setTimeout(() => {
+                if (!cancelled) {
+                  stompClient?.activate();
+                }
+              }, 5000);
             }
           },
         });
