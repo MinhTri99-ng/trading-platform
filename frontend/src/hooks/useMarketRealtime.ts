@@ -221,7 +221,18 @@ export function useMarketRealtime({ symbolCode, interval }: { symbolCode: string
 
           if (!Number.isFinite(candle.openTime) || candle.openTime <= 0) return;
 
-          setCandles((previous) => deduplicateAndLimitCandles([...previous, candle]));
+          setCandles((previous) => {
+            const updatedCandles = [...previous];
+            const lastCandle = updatedCandles[updatedCandles.length - 1];
+
+            if (lastCandle?.openTime === candle.openTime) {
+              updatedCandles[updatedCandles.length - 1] = candle;
+            } else if (!lastCandle || candle.openTime > lastCandle.openTime) {
+              updatedCandles.push(candle);
+            }
+
+            return [...updatedCandles];
+          });
           safeSetTicker({
             symbol: normalizedSymbol,
             price: candle.close,
