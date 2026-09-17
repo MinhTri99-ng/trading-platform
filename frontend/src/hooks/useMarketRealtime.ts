@@ -272,67 +272,8 @@ export function useMarketRealtime({ symbolCode, interval }: { symbolCode: string
           heartbeatOutgoing: 10000,
           onConnect: () => {
             if (cancelled) return;
-            if (binanceReconnectTimeout) {
-              clearTimeout(binanceReconnectTimeout);
-              binanceReconnectTimeout = null;
-            }
-            if (binanceSocket) {
-              const socket = binanceSocket;
-              binanceSocket = null;
-              socket.close();
-            }
             setIsConnected(true);
             console.info(`[CHART WS CONNECTED] symbol=${normalizedSymbol} timeframe=${normalizedInterval}`);
-
-            stompClient?.publish({
-              destination: "/app/market/subscribe",
-              body: JSON.stringify({ symbol: normalizedSymbol, interval: normalizedInterval }),
-            });
-
-            stompClient?.subscribe(`/topic/klines/${normalizedSymbol}`, (frame) => {
-              try {
-                const payload = JSON.parse(frame.body) as Record<string, unknown>;
-                const candle = {
-                  openTime: Number(payload.openTime ?? 0),
-                  closeTime: Number(payload.closeTime ?? 0),
-                  open: Number(payload.open ?? 0),
-                  high: Number(payload.high ?? 0),
-                  low: Number(payload.low ?? 0),
-                  close: Number(payload.close ?? 0),
-                  volume: Number(payload.volume ?? 0),
-                  isClosed: Boolean(payload.isFinal ?? true),
-                };
-
-                if (!Number.isFinite(candle.openTime) || candle.openTime <= 0) {
-                  return;
-                }
-
-                console.info(`[CHART UPDATE] symbol=${normalizedSymbol} timeframe=${normalizedInterval} close=${candle.close} volume=${candle.volume}`);
-
-                setCandles((previous) => {
-                  const merged = [...previous];
-                  const index = merged.findIndex((item) => item.openTime === candle.openTime);
-
-                  if (index >= 0) {
-                    merged[index] = candle;
-                  } else {
-                    merged.push(candle);
-                  }
-
-                  return deduplicateAndLimitCandles(merged);
-                });
-
-                safeSetTicker({
-                  symbol: normalizedSymbol,
-                  price: candle.close,
-                  highPrice: Math.max(Number(payload.high ?? candle.high), ticker?.highPrice ?? candle.high),
-                  lowPrice: Math.min(Number(payload.low ?? candle.low), ticker?.lowPrice ?? candle.low),
-                  volume: candle.volume,
-                });
-              } catch (error) {
-                console.warn("Kline payload parse failed:", error);
-              }
-            });
 
             stompClient?.subscribe(`/topic/signals`, (frame) => {
               try {
@@ -399,6 +340,7 @@ export function useMarketRealtime({ symbolCode, interval }: { symbolCode: string
   };
 
   void hydrateHistory();
+  startBinanceFallback();
   connect();
 
   return () => {
