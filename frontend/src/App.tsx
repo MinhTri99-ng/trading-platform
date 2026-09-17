@@ -3,15 +3,22 @@ import { useTranslation } from "react-i18next";
 import {
   Bot,
   BrainCircuit,
-  CandlestickChart,
   ChevronDown,
   Search,
   Settings,
   ShieldCheck,
   Sparkles,
+  UserRound,
 } from "lucide-react";
 
 import { TradingChart } from "./components/TradingChart";
+import { AIChatDrawer } from "./components/AIChatDrawer";
+import { SettingsModal } from "./components/SettingsModal";
+import { SearchModal } from "./components/SearchModal";
+import { AuthModal } from "./components/AuthModal";
+import { UserProfileModal } from "./components/UserProfileModal";
+import { useAuth } from "./context/AuthContext";
+import { useSettings } from "./context/SettingsContext";
 import { useMarketRealtime, type MarketSignal } from "./hooks/useMarketRealtime";
 
 type Timeframe = "1m" | "5m" | "15m" | "30m" | "1H" | "4H" | "1D" | "1W";
@@ -107,10 +114,10 @@ const readTradeHistory = (): TradeHistoryEntry[] => {
   }
 };
 
-const formatMoney = (value: number) =>
+const formatMoney = (value: number, currency: "USD" | "VND" = "USD") =>
   new Intl.NumberFormat("en-US", {
     style: "currency",
-    currency: "USD",
+    currency,
     maximumFractionDigits: value >= 1000 ? 0 : 2,
   }).format(value);
 
@@ -131,6 +138,8 @@ function StatBadge({ children, tone = "neutral" }: { children: React.ReactNode; 
 
 function App() {
   const { t, i18n } = useTranslation();
+  const { settings, updateSettings } = useSettings();
+  const { user, isAuthenticated, logout } = useAuth();
   const [selectedSymbol, setSelectedSymbol] = useState("BTC/USDT");
   const [selectedTimeframe, setSelectedTimeframe] = useState<Timeframe>("4H");
   const [indicatorState, setIndicatorState] = useState({ ema50: true, ema200: true, volume: true });
@@ -140,6 +149,14 @@ function App() {
   const [visionSignal, setVisionSignal] = useState<MarketSignal | null>(null);
   const [tradingSignalPanel, setTradingSignalPanel] = useState<MarketSignal | null>(null);
   const [tradeHistory, setTradeHistory] = useState<TradeHistoryEntry[]>(() => readTradeHistory());
+  // Header owns modal visibility; the modal owns its draft form and returns a saved snapshot.
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isAIChatOpen, setIsAIChatOpen] = useState(false);
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [profileTab, setProfileTab] = useState<"profile" | "password">("profile");
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
 
   const historyPreview = tradeHistory.length > 0 ? tradeHistory.slice(0, 5) : [
     { id: "demo-1", symbol: "BTC/USDT", direction: "LONG" as const, entry: 67340, stopLoss: 66800, takeProfit: 68200, confidence: 82, timeframe: "4H", status: "TP" as const, createdAt: new Date().toISOString() },
@@ -147,6 +164,8 @@ function App() {
   ];
 
   const currentLanguage = i18n.resolvedLanguage || i18n.language || "en";
+  const displayCurrency = settings.system.currency;
+  const currencySymbol = displayCurrency === "VND" ? "₫" : "$";
 
   const symbolPrice = useMemo(() => {
     if (selectedSymbol === "BTC/USDT") return 67340.25;
@@ -398,17 +417,32 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0B0E14] text-slate-100">
-      <header className="sticky top-0 z-50 border-b border-slate-800/90 bg-[#0B0E14]/90 backdrop-blur-xl">
+    <div className={`min-h-screen ${settings.chart.theme === "light" ? "bg-slate-100 text-slate-900" : "bg-[#0B0E14] text-slate-100"}`}>
+      <header className={`sticky top-0 z-50 border-b border-slate-800/90 backdrop-blur-xl ${settings.chart.theme === "light" ? "bg-slate-100/90" : "bg-[#0B0E14]/90"}`}>
         <div className="mx-auto flex min-w-max max-w-[1700px] items-center justify-between gap-4 overflow-x-auto whitespace-nowrap px-4 py-3.5 xl:px-6">
           <div className="flex shrink-0 min-w-0 items-center gap-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 via-cyan-500 to-indigo-500 shadow-[0_0_20px_rgba(59,130,246,0.45)]">
-                <CandlestickChart className="h-4 w-4 text-white" />
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-cyan-400/20 bg-slate-950/80 shadow-[0_0_22px_rgba(0,240,255,0.16)]">
+                <svg viewBox="0 0 48 48" className="h-9 w-9 drop-shadow-[0_0_5px_rgba(0,240,255,0.6)]" role="img" aria-label="SnapChart scanner logo">
+                  <defs>
+                    <linearGradient id="snapchart-logo-gradient" x1="4" y1="4" x2="44" y2="44" gradientUnits="userSpaceOnUse">
+                      <stop stopColor="#00F0FF" />
+                      <stop offset="1" stopColor="#10B981" />
+                    </linearGradient>
+                  </defs>
+                  <path d="M15 7H9a2 2 0 0 0-2 2v6M33 7h6a2 2 0 0 1 2 2v6M15 41H9a2 2 0 0 1-2-2v-6M33 41h6a2 2 0 0 0 2-2v-6" fill="none" stroke="url(#snapchart-logo-gradient)" strokeLinecap="round" strokeWidth="2.5" />
+                  <path d="M12 29h24" stroke="url(#snapchart-logo-gradient)" strokeDasharray="2 3" strokeOpacity=".55" />
+                  <path d="M17 25V16M14 19h6M14 25h6M26 32V12M23 15h6M23 28h6" fill="none" stroke="url(#snapchart-logo-gradient)" strokeLinecap="round" strokeWidth="2.2" />
+                  <circle cx="34" cy="15" r="3" fill="#00F0FF" stroke="#D9FEFF" strokeWidth="1" />
+                  <path d="m34 10 1.2 3.8L39 15l-3.8 1.2L34 20l-1.2-3.8L29 15l3.8-1.2L34 10Z" fill="#D9FEFF" />
+                </svg>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-lg font-semibold tracking-tight text-white">TradeAI</span>
-                <span className="rounded border border-blue-500/30 bg-blue-500/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.2em] text-blue-300">PRO</span>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg font-semibold leading-none tracking-tight text-white">Snap<span className="bg-gradient-to-r from-[#00F0FF] to-[#3B82F6] bg-clip-text text-transparent">Chart</span></span>
+                  <span className="rounded-md border border-cyan-300/50 bg-cyan-400/10 px-1.5 py-1 text-[8px] font-bold uppercase tracking-[0.18em] text-cyan-200 backdrop-blur-md">AI PRO</span>
+                </div>
+                <span className="mt-1 block text-[9px] font-medium tracking-[0.08em] text-slate-400">Scan Chart • Instant SMC Signals</span>
               </div>
             </div>
 
@@ -433,7 +467,7 @@ function App() {
           <div className="hidden shrink-0 items-center gap-5 lg:flex">
             <div className="flex shrink-0 whitespace-nowrap items-center gap-3 rounded-full border border-slate-800 bg-slate-900/80 px-3 py-1.5">
               <span className="text-[10px] uppercase tracking-[0.18em] text-slate-500">{t("nav.marketCap")}</span>
-              <span className="text-sm font-semibold text-slate-100">$2.41T</span>
+              <span className="text-sm font-semibold text-slate-100">{currencySymbol}2.41T</span>
               <span className="text-xs font-medium text-emerald-300">+1.8%</span>
             </div>
             <div className="flex shrink-0 whitespace-nowrap items-center gap-3 rounded-full border border-slate-800 bg-slate-900/80 px-3 py-1.5">
@@ -443,15 +477,19 @@ function App() {
             </div>
             <div className="flex shrink-0 whitespace-nowrap items-center gap-3 rounded-full border border-slate-800 bg-slate-900/80 px-3 py-1.5">
               <span className="text-[10px] uppercase tracking-[0.18em] text-slate-500">{t("nav.volume24h")}</span>
-              <span className="text-sm font-semibold text-slate-100">$98.4B</span>
+              <span className="text-sm font-semibold text-slate-100">{currencySymbol}98.4B</span>
             </div>
           </div>
 
           <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-            <button className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-800 bg-slate-900/80 text-slate-200 transition hover:border-slate-700">
+            <button type="button" aria-label="Tìm kiếm" onClick={() => setIsSearchOpen(true)} className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-800 bg-slate-900/80 text-slate-200 transition hover:border-slate-700">
               <Search className="h-4 w-4" />
             </button>
-            <button className="flex items-center gap-2 rounded-xl border border-violet-500/35 bg-violet-500/10 px-3 py-2 text-xs font-semibold text-violet-200 transition hover:border-violet-400/50">
+            <button
+              type="button"
+              onClick={() => setIsAIChatOpen(true)}
+              className="flex items-center gap-2 rounded-xl border border-violet-500/35 bg-violet-500/10 px-3 py-2 text-xs font-semibold text-violet-200 transition hover:border-violet-400/50"
+            >
               <Bot className="h-3.5 w-3.5" />
               {t("nav.askAi")}
             </button>
@@ -475,14 +513,19 @@ function App() {
                 ))}
               </select>
             </div>
-            <button className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-800 bg-slate-900/80 text-slate-200 transition hover:border-slate-700">
+            <button type="button" aria-label="Mở cài đặt" onClick={() => setIsSettingsOpen(true)} className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-800 bg-slate-900/80 text-slate-200 transition hover:border-slate-700">
               <Settings className="h-4 w-4" />
             </button>
-            <button className="flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-900/80 px-2.5 py-1.5">
-              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-sky-500 to-indigo-600 text-[10px] font-bold text-white">J</div>
-              <span className="hidden text-sm font-medium text-slate-100 sm:block">James</span>
-              <ChevronDown className="hidden h-4 w-4 text-slate-400 sm:block" />
-            </button>
+            {isAuthenticated && user ? (
+              <div className="relative">
+                <button type="button" aria-expanded={isUserMenuOpen} onClick={() => setIsUserMenuOpen((open) => !open)} className="flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-900/80 px-2.5 py-1.5">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-sky-500 to-indigo-600 text-[10px] font-bold text-white">{`${user.firstName[0] ?? ""}${user.lastName[0] ?? ""}`.toUpperCase()}</div>
+                  <span className="hidden max-w-32 truncate text-sm font-medium text-slate-100 sm:block">{`${user.firstName} ${user.lastName}`.trim()}</span>
+                  <ChevronDown className={`hidden h-4 w-4 text-slate-400 transition sm:block ${isUserMenuOpen ? "rotate-180" : ""}`} />
+                </button>
+                {isUserMenuOpen ? <div className="absolute right-0 top-full z-20 mt-2 w-52 rounded-xl border border-slate-700 bg-[#121721] p-1.5 shadow-2xl shadow-black/60"><button type="button" onClick={() => { setProfileTab("profile"); setIsProfileOpen(true); setIsUserMenuOpen(false); }} className="flex w-full items-center rounded-lg px-3 py-2.5 text-left text-sm text-slate-200 hover:bg-slate-800">Thông tin tài khoản</button><button type="button" onClick={() => { setProfileTab("password"); setIsProfileOpen(true); setIsUserMenuOpen(false); }} className="flex w-full items-center rounded-lg px-3 py-2.5 text-left text-sm text-slate-200 hover:bg-slate-800">Đổi mật khẩu</button><button type="button" onClick={() => { logout(); setIsUserMenuOpen(false); }} className="flex w-full items-center rounded-lg px-3 py-2.5 text-left text-sm text-rose-300 hover:bg-rose-500/10">Đăng xuất</button></div> : null}
+              </div>
+            ) : <button type="button" onClick={() => setIsAuthOpen(true)} className="flex items-center gap-2 rounded-xl border border-cyan-500/40 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-200 transition hover:border-cyan-400"><UserRound className="h-4 w-4" />Đăng nhập</button>}
           </div>
         </div>
       </header>
@@ -505,9 +548,9 @@ function App() {
                   </div>
                   <div className="space-y-1 text-[10px] text-slate-400">
                     <div className="flex justify-between"><span>{entry.direction}</span><span>{entry.timeframe}</span></div>
-                    <div className="flex justify-between"><span>Vào</span><span>{formatMoney(entry.entry)}</span></div>
-                    <div className="flex justify-between"><span>TP</span><span>{formatMoney(entry.takeProfit)}</span></div>
-                    <div className="flex justify-between"><span>SL</span><span>{formatMoney(entry.stopLoss)}</span></div>
+                    <div className="flex justify-between"><span>Vào</span><span>{formatMoney(entry.entry, displayCurrency)}</span></div>
+                    <div className="flex justify-between"><span>TP</span><span>{formatMoney(entry.takeProfit, displayCurrency)}</span></div>
+                    <div className="flex justify-between"><span>SL</span><span>{formatMoney(entry.stopLoss, displayCurrency)}</span></div>
                   </div>
                 </div>
               ))}
@@ -525,7 +568,7 @@ function App() {
                   <div className="mb-3 flex items-start justify-between gap-2">
                     <div>
                       <p className="text-sm font-semibold text-slate-100">{card.pair}</p>
-                      <p className="mt-1 text-lg font-bold text-white">{formatMoney(card.price)}</p>
+                      <p className="mt-1 text-lg font-bold text-white">{formatMoney(card.price, displayCurrency)}</p>
                     </div>
                     <StatBadge tone={card.change >= 0 ? "positive" : "negative"}>{card.change >= 0 ? "+" : ""}{card.change.toFixed(2)}%</StatBadge>
                   </div>
@@ -668,15 +711,15 @@ function App() {
                     <div className="grid grid-cols-2 gap-3 text-sm">
                       <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-2.5">
                         <div className="text-[10px] uppercase tracking-[0.12em] text-slate-500">{t("dashboard.entry")}</div>
-                        <div className="mt-1 font-semibold text-slate-100">{formatMoney(activeSignal.entry)}</div>
+                        <div className="mt-1 font-semibold text-slate-100">{formatMoney(activeSignal.entry, displayCurrency)}</div>
                       </div>
                       <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-2.5">
                         <div className="text-[10px] uppercase tracking-[0.12em] text-slate-500">{t("dashboard.stop")}</div>
-                        <div className="mt-1 font-semibold text-slate-100">{formatMoney(activeSignal.stopLoss)}</div>
+                        <div className="mt-1 font-semibold text-slate-100">{formatMoney(activeSignal.stopLoss, displayCurrency)}</div>
                       </div>
                       <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-2.5">
                         <div className="text-[10px] uppercase tracking-[0.12em] text-slate-500">{t("dashboard.target")}</div>
-                        <div className="mt-1 font-semibold text-slate-100">{formatMoney(activeSignal.takeProfit)}</div>
+                        <div className="mt-1 font-semibold text-slate-100">{formatMoney(activeSignal.takeProfit, displayCurrency)}</div>
                       </div>
                       <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-2.5">
                         <div className="text-[10px] uppercase tracking-[0.12em] text-slate-500">{t("dashboard.riskReward")}</div>
@@ -938,6 +981,12 @@ function App() {
       <button className="fixed bottom-6 right-6 flex h-12 w-12 items-center justify-center rounded-full border border-violet-500/50 bg-violet-500/15 text-xl text-violet-200 shadow-[0_0_22px_rgba(168,85,247,0.35)] transition hover:scale-[1.02]">
         ?
       </button>
+
+      <AIChatDrawer isOpen={isAIChatOpen} onClose={() => setIsAIChatOpen(false)} />
+      <SearchModal isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} onToggleOpen={() => setIsSearchOpen((open) => !open)} onSelectSymbol={setSelectedSymbol} onOpenSettings={() => setIsSettingsOpen(true)} onOpenAIChat={() => setIsAIChatOpen(true)} onToggleTheme={() => updateSettings({ chart: { theme: settings.chart.theme === "dark" ? "light" : "dark" } })} isDarkTheme={settings.chart.theme === "dark"} />
+      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} onSave={() => setIsSettingsOpen(false)} />
+      <AuthModal isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} />
+      <UserProfileModal key={`${isProfileOpen}-${profileTab}`} isOpen={isProfileOpen} initialTab={profileTab} onClose={() => setIsProfileOpen(false)} />
     </div>
   );
 }

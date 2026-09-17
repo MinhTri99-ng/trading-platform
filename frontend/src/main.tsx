@@ -6,6 +6,8 @@ import './i18n';
 import './index.css';
 import App from './App.tsx';
 import { AppErrorBoundary } from './components/ErrorBoundary';
+import { SettingsProvider } from './context/SettingsContext';
+import { AuthProvider } from './context/AuthContext';
 
 const rootElement = document.getElementById('root');
 
@@ -16,7 +18,11 @@ if (!rootElement) {
 createRoot(rootElement).render(
   <StrictMode>
     <AppErrorBoundary>
-      <App />
+      <AuthProvider>
+        <SettingsProvider>
+          <App />
+        </SettingsProvider>
+      </AuthProvider>
     </AppErrorBoundary>
   </StrictMode>,
 );

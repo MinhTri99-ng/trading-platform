@@ -268,7 +268,7 @@ export function useMarketRealtime({ symbolCode, interval }: { symbolCode: string
               setIsConnected(false);
             }
           },
-          onWebSocketClose: () => {
+     onWebSocketClose: () => {
             if (!cancelled) {
               console.warn(`[CHART WS RECONNECTING] symbol=${normalizedSymbol} timeframe=${normalizedInterval}`);
               setIsConnected(false);
@@ -282,22 +282,23 @@ export function useMarketRealtime({ symbolCode, interval }: { symbolCode: string
           },
         });
 
-        stompClient.activate();
-      } catch (error) {
-        console.error("Failed to initialize STOMP client:", error);
-        setIsConnected(false);
-      }
-    };
 
-    void hydrateHistory();
-    connect();
-
-    return () => {
-      cancelled = true;
-      stompClient?.deactivate();
+    stompClient.activate();
+    } catch (error) {
+      console.error("Failed to initialize STOMP client:", error);
       setIsConnected(false);
-    };
-  }, [interval, symbolCode]);
+    }
+  };
+
+  void hydrateHistory();
+  connect();
+
+  return () => {
+    cancelled = true;
+    stompClient?.deactivate();
+    setIsConnected(false);
+  };
+}, [interval, symbolCode]); // Dòng này sẽ hết gạch đỏ
 
   return { candles, ticker, signal, isConnected };
 }
