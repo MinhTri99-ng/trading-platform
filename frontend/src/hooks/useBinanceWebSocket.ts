@@ -276,6 +276,9 @@ export function useBinanceWebSocket({
       socket.onerror = () => {
         if (!isUnmounted) {
           setIsConnected(false);
+          if (socket.readyState !== WebSocket.CLOSED) {
+            socket.close();
+          }
         }
       };
     };

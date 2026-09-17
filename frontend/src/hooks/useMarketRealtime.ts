@@ -120,6 +120,8 @@ export function useMarketRealtime({ symbolCode, interval }: { symbolCode: string
 
     let cancelled = false;
     let stompClient: Client | null = null;
+    let binanceSocket: WebSocket | null = null;
+    let binanceReconnectTimeout: ReturnType<typeof setTimeout> | null = null;
 
     console.info(`[CHART WS CONNECTED] symbol=${normalizedSymbol} timeframe=${normalizedInterval}`);
 
@@ -179,15 +181,95 @@ export function useMarketRealtime({ symbolCode, interval }: { symbolCode: string
       }
     };
 
+    const startBinanceFallback = () => {
+      if (cancelled || binanceSocket?.readyState === WebSocket.OPEN || binanceSocket?.readyState === WebSocket.CONNECTING) {
+        return;
+      }
+
+      const binanceSymbol = normalizedSymbol.toLowerCase().includes("usdt")
+        ? normalizedSymbol.toLowerCase()
+        : `${normalizedSymbol.toLowerCase()}usdt`;
+      const wsUrl = `wss://stream.binance.com:9443/ws/${binanceSymbol}@kline_${normalizedInterval}`;
+      const socket = new WebSocket(wsUrl);
+      binanceSocket = socket;
+
+      socket.onopen = () => {
+        if (!cancelled) {
+          setIsConnected(true);
+          console.info(`[CHART BINANCE FALLBACK CONNECTED] symbol=${normalizedSymbol} timeframe=${normalizedInterval}`);
+        }
+      };
+
+      socket.onmessage = (event) => {
+        if (cancelled) return;
+
+        try {
+          const payload = JSON.parse(event.data) as { k?: Record<string, unknown> };
+          const kline = payload.k;
+          if (!kline) return;
+
+          const candle: BinanceKlineCandle = {
+            openTime: Number(kline.t ?? 0),
+            closeTime: Number(kline.T ?? 0),
+            open: Number(kline.o ?? 0),
+            high: Number(kline.h ?? 0),
+            low: Number(kline.l ?? 0),
+            close: Number(kline.c ?? 0),
+            volume: Number(kline.v ?? 0),
+            isClosed: Boolean(kline.x),
+          };
+
+          if (!Number.isFinite(candle.openTime) || candle.openTime <= 0) return;
+
+          setCandles((previous) => deduplicateAndLimitCandles([...previous, candle]));
+          safeSetTicker({
+            symbol: normalizedSymbol,
+            price: candle.close,
+            highPrice: candle.high,
+            lowPrice: candle.low,
+            volume: candle.volume,
+          });
+        } catch (error) {
+          console.warn("Binance fallback payload parse failed:", error);
+        }
+      };
+
+      socket.onclose = () => {
+        if (cancelled || binanceSocket !== socket) return;
+
+        binanceSocket = null;
+        setIsConnected(false);
+        binanceReconnectTimeout = setTimeout(() => {
+          binanceReconnectTimeout = null;
+          startBinanceFallback();
+        }, 3000);
+      };
+
+      socket.onerror = () => {
+        if (!cancelled && socket.readyState !== WebSocket.CLOSED) {
+          socket.close();
+        }
+      };
+    };
+
     const connect = () => {
       try {
         stompClient = new Client({
           webSocketFactory: () => new SockJS(`${baseUrl}/ws-market`),
-          reconnectDelay: 5000,
-          heartbeatIncoming: 4000,
-          heartbeatOutgoing: 4000,
+          reconnectDelay: 3000,
+          heartbeatIncoming: 10000,
+          heartbeatOutgoing: 10000,
           onConnect: () => {
             if (cancelled) return;
+            if (binanceReconnectTimeout) {
+              clearTimeout(binanceReconnectTimeout);
+              binanceReconnectTimeout = null;
+            }
+            if (binanceSocket) {
+              const socket = binanceSocket;
+              binanceSocket = null;
+              socket.close();
+            }
             setIsConnected(true);
             console.info(`[CHART WS CONNECTED] symbol=${normalizedSymbol} timeframe=${normalizedInterval}`);
 
@@ -276,6 +358,9 @@ export function useMarketRealtime({ symbolCode, interval }: { symbolCode: string
                 if (!cancelled && !stompClient?.active) {
                   stompClient?.activate();
                 }
+                if (!cancelled && !stompClient?.connected) {
+                  startBinanceFallback();
+                }
               }, 3000);
             }
           },
@@ -287,6 +372,7 @@ export function useMarketRealtime({ symbolCode, interval }: { symbolCode: string
               setTimeout(() => {
                 if (!cancelled) {
                   stompClient?.activate();
+                  startBinanceFallback();
                 }
               }, 5000);
             }
@@ -306,6 +392,11 @@ export function useMarketRealtime({ symbolCode, interval }: { symbolCode: string
 
   return () => {
     cancelled = true;
+    if (binanceReconnectTimeout) {
+      clearTimeout(binanceReconnectTimeout);
+    }
+    binanceSocket?.close();
+    binanceSocket = null;
     stompClient?.deactivate();
     setIsConnected(false);
   };
