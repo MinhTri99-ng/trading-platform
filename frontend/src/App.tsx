@@ -20,6 +20,7 @@ import { UserProfileModal } from "./components/UserProfileModal";
 import { useAuth } from "./context/AuthContext";
 import { useSettings } from "./context/SettingsContext";
 import { useMarketRealtime, type MarketSignal } from "./hooks/useMarketRealtime";
+import { useSMCAnalysis } from "./hooks/useSMCAnalysis";
 
 type Timeframe = "1m" | "5m" | "15m" | "30m" | "1H" | "4H" | "1D" | "1W";
 
@@ -58,12 +59,6 @@ const watchlist = [
   { symbol: "BNB", price: 598.34, change: 1.21 },
   { symbol: "ADA", price: 0.74, change: -1.28 },
   { symbol: "DOGE", price: 0.1742, change: 2.11 },
-];
-
-const aiProgress = [
-  { key: "dashboard.overallBias", label: "Overall Bias", value: 78 },
-  { key: "dashboard.trendStrength", label: "Trend Strength", value: 82 },
-  { key: "dashboard.breakoutProbability", label: "Breakout Probability", value: 71 },
 ];
 
 type ScreenshotStatus = "idle" | "uploading" | "extracting" | "verifying" | "completed" | "invalid";
@@ -218,6 +213,12 @@ function App() {
     symbolCode: selectedSymbol,
     interval: timeframeToBinance(selectedTimeframe),
   });
+  const smcAnalysis = useSMCAnalysis(candles, settings.smc, settings.risk.minimumRiskReward);
+  const smcMetrics = [
+    { label: "Overall Bias", value: smcAnalysis.overallBiasScore },
+    { label: "Trend Strength", value: smcAnalysis.trendStrengthScore },
+    { label: "Breakout Probability", value: smcAnalysis.breakoutProbability },
+  ];
 
   const activeSignal = visionSignal ?? signal ?? tradingSignalPanel;
   const hasSignal = Boolean(activeSignal && activeSignal.direction !== "NONE" && activeSignal.entry && activeSignal.entry > 0);
@@ -786,24 +787,26 @@ function App() {
                   <Sparkles className="h-4 w-4 text-violet-300" />
                   {t("dashboard.aiAnalysis")}
                 </div>
-                <StatBadge tone="positive">TĂNG</StatBadge>
+                <StatBadge tone={smcAnalysis.bias === "BULLISH" ? "positive" : smcAnalysis.bias === "BEARISH" ? "negative" : "neutral"}>
+                  {smcAnalysis.bias === "BULLISH" ? "TĂNG" : smcAnalysis.bias === "BEARISH" ? "GIẢM" : "TÍCH LŨY"}
+                </StatBadge>
               </div>
 
-              {aiProgress.map((metric) => (
+              {smcMetrics.map((metric) => (
                 <div key={metric.label} className="mb-4 last:mb-0">
                   <div className="mb-2 flex items-center justify-between text-[10px] uppercase tracking-[0.15em] text-slate-400">
                     <span>{metric.label}</span>
                     <span className="text-slate-200">{metric.value}%</span>
                   </div>
                   <div className="h-2 overflow-hidden rounded-full bg-slate-800">
-                    <div className="h-full rounded-full bg-gradient-to-r from-blue-500 to-cyan-400" style={{ width: `${metric.value}%` }} />
+                    <div className={`h-full rounded-full ${smcAnalysis.bias === "BULLISH" ? "bg-gradient-to-r from-emerald-500 to-green-400" : smcAnalysis.bias === "BEARISH" ? "bg-gradient-to-r from-rose-500 to-red-400" : "bg-gradient-to-r from-amber-500 to-yellow-400"}`} style={{ width: `${metric.value}%` }} />
                   </div>
                 </div>
               ))}
 
               <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-950/70 p-3.5">
                 <p className="text-sm leading-6 text-slate-300">
-                  Cấu trúc dài hạn vẫn giữ mạnh. Xu hướng đang được củng cố bởi khối lượng và vùng hỗ trợ thứ cấp.
+                  {smcAnalysis.aiInsightText}
                 </p>
               </div>
             </div>

@@ -9,7 +9,7 @@ export type TradeSettings = {
   system: { currency: "USD" | "VND"; language: string };
   explanation: { enabled: boolean; detail: "short" | "detailed"; showNoTradeReason: boolean; showM15Structure: boolean; showLiquidity: boolean; showM1Confirmation: boolean; showM5EntryModel: boolean };
   risk: { riskPerTrade: string; minimumRiskReward: string; maxTradesPerDay: string; maxDailyLoss: string };
-  smc: { m15Bias: boolean; liquidity: boolean; m1StructureShift: boolean; m5OrderBlock: boolean; fvg: boolean; ifvg: boolean; londonSession: boolean; newYorkSession: boolean; timezone: string };
+  smc: { m15Bias: boolean; liquidity: boolean; m1StructureShift: boolean; m5OrderBlock: boolean; fvg: boolean; ifvg: boolean; londonSession: boolean; newYorkSession: boolean; timezone: string; fvgThreshold: string; sensitivity: "low" | "balanced" | "high" };
 };
 
 export type SettingsPatch = { [K in keyof TradeSettings]?: Partial<TradeSettings[K]> };
@@ -21,7 +21,7 @@ export const defaultSettings: TradeSettings = {
   system: { currency: "USD", language: "vi" },
   explanation: { enabled: true, detail: "detailed", showNoTradeReason: true, showM15Structure: true, showLiquidity: true, showM1Confirmation: true, showM5EntryModel: true },
   risk: { riskPerTrade: "1.0", minimumRiskReward: "2.0", maxTradesPerDay: "3", maxDailyLoss: "3" },
-  smc: { m15Bias: true, liquidity: true, m1StructureShift: true, m5OrderBlock: true, fvg: true, ifvg: true, londonSession: true, newYorkSession: true, timezone: "America/New_York" },
+  smc: { m15Bias: true, liquidity: true, m1StructureShift: true, m5OrderBlock: true, fvg: true, ifvg: true, londonSession: true, newYorkSession: true, timezone: "America/New_York", fvgThreshold: "0.1", sensitivity: "balanced" },
 };
 
 type SettingsContextValue = {
