@@ -798,8 +798,6 @@ function App() {
             </div>
 
             <Watchlist
-              smcSettings={settings.smc}
-              minimumRiskReward={settings.risk.minimumRiskReward}
               title={t("dashboard.watchlist")}
               liveLabel={t("common.live")}
               onSelectSymbol={setSelectedSymbol}
@@ -813,7 +811,7 @@ function App() {
                 </div>
                 <div className="flex items-center gap-2">
                   <StatBadge tone={uploadStatus === "completed" ? "positive" : uploadStatus === "invalid" ? "negative" : "neutral"}>
-                    {uploadStatus === "completed" ? t("common.verified") : uploadStatus === "invalid" ? t("common.invalid") : t("common.awaiting")}
+                    {uploadStatus === "completed" ? t("common.verified") : uploadStatus === "invalid" ? t("common.invalid") : "Đang chờ ảnh..."}
                   </StatBadge>
                   <button
                     type="button"

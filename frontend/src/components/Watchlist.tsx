@@ -1,47 +1,48 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Trash2, Wifi } from "lucide-react";
-import type { TradeSettings } from "../context/SettingsContext";
-import { useBinanceWebSocket } from "../hooks/useBinanceWebSocket";
-import { useSMCAnalysis } from "../hooks/useSMCAnalysis";
 
 const STORAGE_KEY = "snapchart_watchlist";
 const DEFAULT_SYMBOLS = ["BTC", "ETH", "SOL", "BNB"];
 const SYMBOL_SUGGESTIONS = ["BTC", "ETH", "SOL", "BNB", "NEAR", "AVAX", "LINK", "PEPE", "XRP", "ADA", "DOGE"];
 type FlashDirection = "up" | "down" | null;
 
-type BinanceTickerSnapshot = {
-  symbol: string;
+type PriceSnapshot = {
   price: number;
-  changePercent: number;
+  change24h: number;
 };
+
+type PriceState = Record<string, PriceSnapshot>;
+type ParsedTicker = { symbol: string; snapshot: PriceSnapshot };
 
 const toFiniteNumber = (value: unknown): number => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-const parseTicker = (value: unknown): BinanceTickerSnapshot | null => {
+const parseTicker = (value: unknown): ParsedTicker | null => {
   if (!value || typeof value !== "object") return null;
   const payload = value as Record<string, unknown>;
   const symbol = typeof payload.s === "string" ? payload.s.toUpperCase() : "";
   const price = toFiniteNumber(payload.c);
   if (!symbol || price <= 0) return null;
-  return { symbol, price, changePercent: toFiniteNumber(payload.P) };
+  return { symbol, snapshot: { price, change24h: toFiniteNumber(payload.P) } };
 };
 
-const parseTickerPayload = (value: unknown): BinanceTickerSnapshot[] => {
-  if (Array.isArray(value)) return value.map(parseTicker).filter((item): item is BinanceTickerSnapshot => item !== null);
+const parseTickerPayload = (value: unknown): ParsedTicker[] => {
+  if (Array.isArray(value)) return value.map(parseTicker).filter((item): item is ParsedTicker => item !== null);
   const ticker = parseTicker(value);
   return ticker ? [ticker] : [];
 };
 
 function useWatchlistPrices(symbols: string[]) {
-  const [prices, setPrices] = useState<Record<string, BinanceTickerSnapshot>>({});
+  const [prices, setPrices] = useState<PriceState>({});
   const symbolsKey = symbols.join(",");
 
   useEffect(() => {
     let cancelled = false;
     const requestedSymbols = new Set(symbolsKey.split(",").filter(Boolean).map((symbol) => `${symbol}USDT`));
+    let socket: WebSocket | null = null;
+    let reconnectTimer: number | null = null;
 
     const fetchInitialPrices = async () => {
       try {
@@ -52,21 +53,12 @@ function useWatchlistPrices(symbols: string[]) {
         if (cancelled || nextPrices.length === 0) return;
         setPrices((current) => ({
           ...current,
-          ...Object.fromEntries(nextPrices.map((ticker) => [ticker.symbol, ticker])),
+          ...Object.fromEntries(nextPrices.map((ticker) => [ticker.symbol, ticker.snapshot])),
         }));
       } catch {
         // Keep any previously received snapshot when REST is unavailable.
       }
     };
-
-    void fetchInitialPrices();
-    return () => { cancelled = true; };
-  }, [symbolsKey]);
-
-  useEffect(() => {
-    let cancelled = false;
-    let socket: WebSocket | null = null;
-    let reconnectTimer: number | null = null;
 
     const connect = () => {
       if (cancelled) return;
@@ -80,7 +72,7 @@ function useWatchlistPrices(symbols: string[]) {
           if (relevantPrices.length > 0) {
             setPrices((current) => ({
               ...current,
-              ...Object.fromEntries(relevantPrices.map((ticker) => [ticker.symbol, ticker])),
+              ...Object.fromEntries(relevantPrices.map((ticker) => [ticker.symbol, ticker.snapshot])),
             }));
           }
         } catch {
@@ -90,10 +82,11 @@ function useWatchlistPrices(symbols: string[]) {
       socket.onerror = () => socket?.close();
       socket.onclose = () => {
         socket = null;
-        if (!cancelled) reconnectTimer = window.setTimeout(connect, 3000);
+        if (!cancelled) reconnectTimer = window.setTimeout(connect, 2000);
       };
     };
 
+    void fetchInitialPrices();
     connect();
     return () => {
       cancelled = true;
@@ -106,8 +99,6 @@ function useWatchlistPrices(symbols: string[]) {
 }
 
 type WatchlistProps = {
-  smcSettings: TradeSettings["smc"];
-  minimumRiskReward: string;
   title: string;
   liveLabel: string;
   onSelectSymbol: (symbol: string) => void;
@@ -134,41 +125,16 @@ const formatPrice = (value: number): string => {
   }).format(value);
 };
 
-function SMCBadges({ analysis, settings }: { analysis: ReturnType<typeof useSMCAnalysis>; settings: TradeSettings["smc"] }) {
-  const badges = useMemo(() => {
-    if (analysis.overallBiasScore === 0) return [];
-    const next: string[] = [];
-    if (settings.fvg && analysis.breakoutProbability >= 55) next.push("FVG");
-    if (analysis.bias !== "NEUTRAL" && analysis.trendStrengthScore >= 45) next.push("BOS");
-    if (settings.m5OrderBlock && analysis.bias !== "NEUTRAL" && analysis.overallBiasScore >= 60) next.push("OB");
-    return next.slice(0, 3);
-  }, [analysis, settings.fvg, settings.m5OrderBlock]);
-
-  return badges.length > 0 ? (
-    <div className="mt-1 flex justify-end gap-1">
-      {badges.map((badge) => <span key={badge} className="rounded border border-cyan-400/20 bg-cyan-400/10 px-1.5 py-0.5 text-[9px] font-semibold text-cyan-200">{badge}</span>)}
-    </div>
-  ) : null;
-}
-
-function WatchlistRow({ symbol, marketPrice, smcSettings, minimumRiskReward, onSelect, onRemove }: {
+function WatchlistRow({ symbol, marketPrice, onSelect, onRemove }: {
   symbol: string;
-  marketPrice?: BinanceTickerSnapshot;
-  smcSettings: TradeSettings["smc"];
-  minimumRiskReward: string;
+  marketPrice?: PriceSnapshot;
   onSelect: () => void;
   onRemove: () => void;
 }) {
-  const { ticker, candles } = useBinanceWebSocket({ symbolCode: `${symbol}/USDT`, interval: "1h" });
-  const analysis = useSMCAnalysis(candles, smcSettings, minimumRiskReward);
   const [flash, setFlash] = useState<FlashDirection>(null);
   const previousPrice = useRef<number | null>(null);
-  const latestCandle = candles.at(-1);
-  const dayAgoCandle = candles.at(-25);
-  const currentPrice = marketPrice?.price ?? ticker?.price ?? latestCandle?.close ?? 0;
-  const change = latestCandle && dayAgoCandle && dayAgoCandle.close > 0
-    ? ((latestCandle.close - dayAgoCandle.close) / dayAgoCandle.close) * 100
-    : marketPrice?.changePercent ?? ticker?.priceChangePercent ?? 0;
+  const currentPrice = marketPrice?.price ?? 0;
+  const change = marketPrice?.change24h ?? 0;
 
   useEffect(() => {
     if (currentPrice <= 0) return;
@@ -176,7 +142,7 @@ function WatchlistRow({ symbol, marketPrice, smcSettings, minimumRiskReward, onS
       const direction: FlashDirection = currentPrice > previousPrice.current ? "up" : "down";
       previousPrice.current = currentPrice;
       const startTimer = window.setTimeout(() => setFlash(direction), 0);
-      const endTimer = window.setTimeout(() => setFlash(null), 450);
+      const endTimer = window.setTimeout(() => setFlash(null), 300);
       return () => {
         window.clearTimeout(startTimer);
         window.clearTimeout(endTimer);
@@ -187,20 +153,21 @@ function WatchlistRow({ symbol, marketPrice, smcSettings, minimumRiskReward, onS
   }, [currentPrice]);
 
   const hasPrice = currentPrice > 0;
+  const flashTextClass = flash === "up" ? "text-green-400" : flash === "down" ? "text-red-400" : "text-slate-100";
+  const flashChangeClass = flash === "up" ? "text-green-400" : flash === "down" ? "text-red-400" : change >= 0 ? "text-emerald-300" : "text-rose-300";
 
   return (
-    <div className={`group flex items-center justify-between rounded-xl border px-3 py-2.5 transition-colors ${flash === "up" ? "border-emerald-400/50 bg-emerald-400/10" : flash === "down" ? "border-rose-400/50 bg-rose-400/10" : "border-slate-800 bg-slate-950/60 hover:border-slate-700"}`}>
+    <div className={`group flex items-center justify-between rounded-xl border px-3 py-2.5 transition-colors ${flash === "up" ? "border-green-400/50 bg-green-500/10 text-green-400" : flash === "down" ? "border-red-400/50 bg-red-500/10 text-red-400" : "border-slate-800 bg-slate-950/60 hover:border-slate-700"}`}>
       <button type="button" onClick={onSelect} className="flex min-w-0 flex-1 items-center gap-3 text-left">
         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-800 text-[10px] font-bold text-slate-200">{symbol.slice(0, 2)}</span>
         <span className="min-w-0">
           <span className="block text-sm font-medium text-slate-100">{symbol}</span>
-          <SMCBadges analysis={analysis} settings={smcSettings} />
         </span>
       </button>
       <div className="ml-2 flex items-center gap-2">
         <div className="text-right">
-          <div className="text-sm font-medium text-slate-100">{hasPrice ? formatPrice(currentPrice) : "--"}</div>
-          <div className={`text-[10px] font-semibold ${change >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+          <div className={`text-sm font-medium ${flashTextClass}`}>{hasPrice ? formatPrice(currentPrice) : "--"}</div>
+          <div className={`text-[10px] font-semibold ${flashChangeClass}`}>
             {hasPrice ? `${change >= 0 ? "+" : ""}${change.toFixed(2)}%` : "--"}
           </div>
         </div>
@@ -212,7 +179,7 @@ function WatchlistRow({ symbol, marketPrice, smcSettings, minimumRiskReward, onS
   );
 }
 
-export function Watchlist({ smcSettings, minimumRiskReward, title, liveLabel, onSelectSymbol }: WatchlistProps) {
+export function Watchlist({ title, liveLabel, onSelectSymbol }: WatchlistProps) {
   const [symbols, setSymbols] = useState<string[]>(readSymbols);
   const [isAdding, setIsAdding] = useState(false);
   const [query, setQuery] = useState("");
@@ -260,7 +227,7 @@ export function Watchlist({ smcSettings, minimumRiskReward, title, liveLabel, on
         </div>
       </div>
       <div className="space-y-2">
-        {symbols.map((symbol) => <WatchlistRow key={symbol} symbol={symbol} marketPrice={prices[`${symbol}USDT`]} smcSettings={smcSettings} minimumRiskReward={minimumRiskReward} onSelect={() => onSelectSymbol(`${symbol}/USDT`)} onRemove={() => removeSymbol(symbol)} />)}
+        {symbols.map((symbol) => <WatchlistRow key={symbol} symbol={symbol} marketPrice={prices[`${symbol}USDT`]} onSelect={() => onSelectSymbol(`${symbol}/USDT`)} onRemove={() => removeSymbol(symbol)} />)}
       </div>
     </div>
   );
