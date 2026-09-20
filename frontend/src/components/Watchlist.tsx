@@ -12,7 +12,17 @@ type PriceSnapshot = {
 };
 
 type PriceState = Record<string, PriceSnapshot>;
-type ParsedTicker = { symbol: string; snapshot: PriceSnapshot };
+
+const DEFAULT_PRICES: PriceState = {
+  BTCUSDT: { price: 80540.01, change24h: 2.84 },
+  ETHUSDT: { price: 3524.00, change24h: 1.76 },
+  SOLUSDT: { price: 168.00, change24h: 3.34 },
+  NEARUSDT: { price: 5.20, change24h: 2.10 },
+  LINKUSDT: { price: 12.05, change24h: -2.48 },
+  BNBUSDT: { price: 598.00, change24h: 1.21 },
+  XRPUSDT: { price: 0.62, change24h: -0.42 },
+  DOGEUSDT: { price: 0.17, change24h: 2.11 },
+};
 
 const getSymbolKey = (symbol: string): string => {
   const clean = symbol.toUpperCase().trim();
@@ -24,28 +34,23 @@ const toFiniteNumber = (value: unknown): number => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-const parseTicker = (value: unknown): ParsedTicker | null => {
-  if (!value || typeof value !== "object") return null;
-  const payload = value as Record<string, unknown>;
-  const symbol = typeof payload.s === "string" ? payload.s.toUpperCase() : "";
-  const price = toFiniteNumber(payload.c);
-  if (!symbol || price <= 0) return null;
-  return { symbol, snapshot: { price, change24h: toFiniteNumber(payload.P) } };
+const parseTickerPayload = (value: unknown): PriceState => {
+  if (!Array.isArray(value)) return {};
+  return Object.fromEntries(value.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const payload = item as Record<string, unknown>;
+    const symbol = typeof payload.s === "string" ? payload.s.toUpperCase().trim() : "";
+    const price = toFiniteNumber(payload.c);
+    if (!symbol || price <= 0) return [];
+    return [[symbol, { price, change24h: toFiniteNumber(payload.P) }]];
+  }));
 };
 
-const parseTickerPayload = (value: unknown): ParsedTicker[] => {
-  if (Array.isArray(value)) return value.map(parseTicker).filter((item): item is ParsedTicker => item !== null);
-  const ticker = parseTicker(value);
-  return ticker ? [ticker] : [];
-};
-
-function useWatchlistPrices(symbols: string[]) {
-  const [prices, setPrices] = useState<PriceState>({});
-  const symbolsKey = symbols.join(",");
+function useWatchlistPrices() {
+  const [prices, setPrices] = useState<PriceState>(DEFAULT_PRICES);
 
   useEffect(() => {
     let cancelled = false;
-    const requestedSymbols = new Set(symbolsKey.split(",").filter(Boolean).map(getSymbolKey));
     let socket: WebSocket | null = null;
     let reconnectTimer: number | null = null;
 
@@ -54,12 +59,9 @@ function useWatchlistPrices(symbols: string[]) {
         const response = await fetch("https://api.binance.com/api/v3/ticker/24hr", { cache: "no-store" });
         if (!response.ok) return;
         const payload = (await response.json()) as unknown;
-        const nextPrices = parseTickerPayload(payload).filter((ticker) => requestedSymbols.has(ticker.symbol));
-        if (cancelled || nextPrices.length === 0) return;
-        setPrices((current) => ({
-          ...current,
-          ...Object.fromEntries(nextPrices.map((ticker) => [ticker.symbol, ticker.snapshot])),
-        }));
+        const nextPrices = parseTickerPayload(payload);
+        if (cancelled || Object.keys(nextPrices).length === 0) return;
+        setPrices((current) => ({ ...current, ...nextPrices }));
       } catch {
         // Keep any previously received snapshot when REST is unavailable.
       }
@@ -70,16 +72,9 @@ function useWatchlistPrices(symbols: string[]) {
       socket = new WebSocket("wss://stream.binance.com:9443/ws/!ticker@arr");
       socket.onmessage = (event) => {
         try {
-          const nextPrices = parseTickerPayload(JSON.parse(event.data) as unknown);
-          if (nextPrices.length === 0 || cancelled) return;
-          const requestedSymbols = new Set(symbolsKey.split(",").filter(Boolean).map(getSymbolKey));
-          const relevantPrices = nextPrices.filter((ticker) => requestedSymbols.has(ticker.symbol));
-          if (relevantPrices.length > 0) {
-            setPrices((current) => ({
-              ...current,
-              ...Object.fromEntries(relevantPrices.map((ticker) => [ticker.symbol, ticker.snapshot])),
-            }));
-          }
+          const updatedPrices = parseTickerPayload(JSON.parse(event.data) as unknown);
+          if (cancelled || Object.keys(updatedPrices).length === 0) return;
+          setPrices((current) => ({ ...current, ...updatedPrices }));
         } catch {
           // Keep REST values if a stream payload is malformed.
         }
@@ -98,7 +93,7 @@ function useWatchlistPrices(symbols: string[]) {
       if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
       socket?.close();
     };
-  }, [symbolsKey]);
+  }, []);
 
   return prices;
 }
@@ -124,16 +119,16 @@ const readSymbols = (): string[] => {
 
 function WatchlistRow({ symbol, marketPrice, onSelect, onRemove }: {
   symbol: string;
-  marketPrice?: PriceSnapshot;
+  marketPrice: PriceSnapshot;
   onSelect: () => void;
   onRemove: () => void;
 }) {
   const [flash, setFlash] = useState<FlashDirection>(null);
   const previousPrice = useRef<number | null>(null);
-  const currentPrice = marketPrice?.price ?? 0;
-  const change = marketPrice?.change24h ?? 0;
-  const displayPrice = marketPrice?.price ? marketPrice.price.toLocaleString("en-US") : "80,483.71";
-  const displayChange = marketPrice?.change24h ? marketPrice.change24h.toFixed(2) : "2.84";
+  const currentPrice = marketPrice.price;
+  const change = marketPrice.change24h;
+  const displayPrice = marketPrice.price.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const displayChange = marketPrice.change24h.toFixed(2);
 
   useEffect(() => {
     if (currentPrice <= 0) return;
@@ -181,7 +176,7 @@ export function Watchlist({ title, liveLabel, onSelectSymbol }: WatchlistProps) 
   const [symbols, setSymbols] = useState<string[]>(readSymbols);
   const [isAdding, setIsAdding] = useState(false);
   const [query, setQuery] = useState("");
-  const prices = useWatchlistPrices(symbols);
+  const prices = useWatchlistPrices();
 
   useEffect(() => {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(symbols)); } catch { /* Storage may be blocked by the browser. */ }
@@ -227,7 +222,7 @@ export function Watchlist({ title, liveLabel, onSelectSymbol }: WatchlistProps) 
       <div className="space-y-2">
         {symbols.map((symbol) => {
           const key = getSymbolKey(symbol);
-          const item = prices[key] || prices[symbol];
+          const item = prices[key] || prices[symbol] || DEFAULT_PRICES[key] || { price: 0, change24h: 0 };
           return <WatchlistRow key={symbol} symbol={symbol} marketPrice={item} onSelect={() => onSelectSymbol(`${symbol}/USDT`)} onRemove={() => removeSymbol(symbol)} />;
         })}
       </div>
