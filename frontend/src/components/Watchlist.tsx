@@ -72,9 +72,24 @@ function useWatchlistPrices() {
       socket = new WebSocket("wss://stream.binance.com:9443/ws/!ticker@arr");
       socket.onmessage = (event) => {
         try {
-          const updatedPrices = parseTickerPayload(JSON.parse(event.data) as unknown);
-          if (cancelled || Object.keys(updatedPrices).length === 0) return;
-          setPrices((current) => ({ ...current, ...updatedPrices }));
+          const data = JSON.parse(event.data) as unknown;
+          if (!Array.isArray(data) || cancelled) return;
+          console.log("WS Ticker received:", data.length);
+          setPrices((prev) => {
+            const nextPrices = { ...prev };
+            for (const item of data) {
+              if (!item || typeof item !== "object") continue;
+              const payload = item as Record<string, unknown>;
+              const symbol = typeof payload.s === "string" ? payload.s.toUpperCase().trim() : "";
+              const price = parseFloat(String(payload.c));
+              if (!symbol || !Number.isFinite(price) || price <= 0) continue;
+              nextPrices[symbol] = {
+                price,
+                change24h: parseFloat(String(payload.P)),
+              };
+            }
+            return { ...nextPrices };
+          });
         } catch {
           // Keep REST values if a stream payload is malformed.
         }
