@@ -100,7 +100,7 @@
     "timeframeUndetected": "Không thể nhận diện khung thời gian trên biểu đồ.",
     "marketUnavailable": "Dữ liệu thị trường không khả dụng để xác minh.",
     "marketVerificationFailed": "Xác minh thị trường thất bại. Hình ảnh không thể dùng làm nguồn giá.",
-    "awaiting": "Đang chờ",
+    "awaiting": "Đang chờ ảnh...",
     "extractingMetadata": "Trích xuất metadata",
     "verifyingMarketData": "Xác minh dữ liệu thị trường",
     "completed": "Hoàn tất"

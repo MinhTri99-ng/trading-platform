@@ -9,6 +9,102 @@ const DEFAULT_SYMBOLS = ["BTC", "ETH", "SOL", "BNB"];
 const SYMBOL_SUGGESTIONS = ["BTC", "ETH", "SOL", "BNB", "NEAR", "AVAX", "LINK", "PEPE", "XRP", "ADA", "DOGE"];
 type FlashDirection = "up" | "down" | null;
 
+type BinanceTickerSnapshot = {
+  symbol: string;
+  price: number;
+  changePercent: number;
+};
+
+const toFiniteNumber = (value: unknown): number => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const parseTicker = (value: unknown): BinanceTickerSnapshot | null => {
+  if (!value || typeof value !== "object") return null;
+  const payload = value as Record<string, unknown>;
+  const symbol = typeof payload.s === "string" ? payload.s.toUpperCase() : "";
+  const price = toFiniteNumber(payload.c);
+  if (!symbol || price <= 0) return null;
+  return { symbol, price, changePercent: toFiniteNumber(payload.P) };
+};
+
+const parseTickerPayload = (value: unknown): BinanceTickerSnapshot[] => {
+  if (Array.isArray(value)) return value.map(parseTicker).filter((item): item is BinanceTickerSnapshot => item !== null);
+  const ticker = parseTicker(value);
+  return ticker ? [ticker] : [];
+};
+
+function useWatchlistPrices(symbols: string[]) {
+  const [prices, setPrices] = useState<Record<string, BinanceTickerSnapshot>>({});
+  const symbolsKey = symbols.join(",");
+
+  useEffect(() => {
+    let cancelled = false;
+    const requestedSymbols = new Set(symbolsKey.split(",").filter(Boolean).map((symbol) => `${symbol}USDT`));
+
+    const fetchInitialPrices = async () => {
+      try {
+        const response = await fetch("https://api.binance.com/api/v3/ticker/24hr", { cache: "no-store" });
+        if (!response.ok) return;
+        const payload = (await response.json()) as unknown;
+        const nextPrices = parseTickerPayload(payload).filter((ticker) => requestedSymbols.has(ticker.symbol));
+        if (cancelled || nextPrices.length === 0) return;
+        setPrices((current) => ({
+          ...current,
+          ...Object.fromEntries(nextPrices.map((ticker) => [ticker.symbol, ticker])),
+        }));
+      } catch {
+        // Keep any previously received snapshot when REST is unavailable.
+      }
+    };
+
+    void fetchInitialPrices();
+    return () => { cancelled = true; };
+  }, [symbolsKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let socket: WebSocket | null = null;
+    let reconnectTimer: number | null = null;
+
+    const connect = () => {
+      if (cancelled) return;
+      socket = new WebSocket("wss://stream.binance.com:9443/ws/!ticker@arr");
+      socket.onmessage = (event) => {
+        try {
+          const nextPrices = parseTickerPayload(JSON.parse(event.data) as unknown);
+          if (nextPrices.length === 0 || cancelled) return;
+          const requestedSymbols = new Set(symbolsKey.split(",").filter(Boolean).map((symbol) => `${symbol}USDT`));
+          const relevantPrices = nextPrices.filter((ticker) => requestedSymbols.has(ticker.symbol));
+          if (relevantPrices.length > 0) {
+            setPrices((current) => ({
+              ...current,
+              ...Object.fromEntries(relevantPrices.map((ticker) => [ticker.symbol, ticker])),
+            }));
+          }
+        } catch {
+          // Keep REST values if a stream payload is malformed.
+        }
+      };
+      socket.onerror = () => socket?.close();
+      socket.onclose = () => {
+        socket = null;
+        if (!cancelled) reconnectTimer = window.setTimeout(connect, 3000);
+      };
+    };
+
+    connect();
+    return () => {
+      cancelled = true;
+      if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
+      socket?.close();
+    };
+  }, [symbolsKey]);
+
+  return prices;
+}
+
 type WatchlistProps = {
   smcSettings: TradeSettings["smc"];
   minimumRiskReward: string;
@@ -55,8 +151,9 @@ function SMCBadges({ analysis, settings }: { analysis: ReturnType<typeof useSMCA
   ) : null;
 }
 
-function WatchlistRow({ symbol, smcSettings, minimumRiskReward, onSelect, onRemove }: {
+function WatchlistRow({ symbol, marketPrice, smcSettings, minimumRiskReward, onSelect, onRemove }: {
   symbol: string;
+  marketPrice?: BinanceTickerSnapshot;
   smcSettings: TradeSettings["smc"];
   minimumRiskReward: string;
   onSelect: () => void;
@@ -68,10 +165,10 @@ function WatchlistRow({ symbol, smcSettings, minimumRiskReward, onSelect, onRemo
   const previousPrice = useRef<number | null>(null);
   const latestCandle = candles.at(-1);
   const dayAgoCandle = candles.at(-25);
-  const currentPrice = ticker?.price ?? latestCandle?.close ?? 0;
+  const currentPrice = marketPrice?.price ?? ticker?.price ?? latestCandle?.close ?? 0;
   const change = latestCandle && dayAgoCandle && dayAgoCandle.close > 0
     ? ((latestCandle.close - dayAgoCandle.close) / dayAgoCandle.close) * 100
-    : ticker?.priceChangePercent ?? 0;
+    : marketPrice?.changePercent ?? ticker?.priceChangePercent ?? 0;
 
   useEffect(() => {
     if (currentPrice <= 0) return;
@@ -104,7 +201,7 @@ function WatchlistRow({ symbol, smcSettings, minimumRiskReward, onSelect, onRemo
         <div className="text-right">
           <div className="text-sm font-medium text-slate-100">{hasPrice ? formatPrice(currentPrice) : "--"}</div>
           <div className={`text-[10px] font-semibold ${change >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
-            {hasPrice ? `${change >= 0 ? "+" : ""}${change.toFixed(2)}%` : "Đang tải"}
+            {hasPrice ? `${change >= 0 ? "+" : ""}${change.toFixed(2)}%` : "--"}
           </div>
         </div>
         <button type="button" onClick={onRemove} aria-label={`Xóa ${symbol} khỏi watchlist`} className="rounded-md p-1.5 text-slate-600 opacity-0 transition hover:bg-rose-400/10 hover:text-rose-300 group-hover:opacity-100 focus:opacity-100">
@@ -119,6 +216,7 @@ export function Watchlist({ smcSettings, minimumRiskReward, title, liveLabel, on
   const [symbols, setSymbols] = useState<string[]>(readSymbols);
   const [isAdding, setIsAdding] = useState(false);
   const [query, setQuery] = useState("");
+  const prices = useWatchlistPrices(symbols);
 
   useEffect(() => {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(symbols)); } catch { /* Storage may be blocked by the browser. */ }
@@ -162,7 +260,7 @@ export function Watchlist({ smcSettings, minimumRiskReward, title, liveLabel, on
         </div>
       </div>
       <div className="space-y-2">
-        {symbols.map((symbol) => <WatchlistRow key={symbol} symbol={symbol} smcSettings={smcSettings} minimumRiskReward={minimumRiskReward} onSelect={() => onSelectSymbol(`${symbol}/USDT`)} onRemove={() => removeSymbol(symbol)} />)}
+        {symbols.map((symbol) => <WatchlistRow key={symbol} symbol={symbol} marketPrice={prices[`${symbol}USDT`]} smcSettings={smcSettings} minimumRiskReward={minimumRiskReward} onSelect={() => onSelectSymbol(`${symbol}/USDT`)} onRemove={() => removeSymbol(symbol)} />)}
       </div>
     </div>
   );
