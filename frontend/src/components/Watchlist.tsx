@@ -29,84 +29,49 @@ const getSymbolKey = (symbol: string): string => {
   return clean.endsWith("USDT") ? clean : `${clean}USDT`;
 };
 
-const toFiniteNumber = (value: unknown): number => {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-};
-
-const parseTickerPayload = (value: unknown): PriceState => {
-  if (!Array.isArray(value)) return {};
-  return Object.fromEntries(value.flatMap((item) => {
-    if (!item || typeof item !== "object") return [];
-    const payload = item as Record<string, unknown>;
-    const symbol = typeof payload.s === "string" ? payload.s.toUpperCase().trim() : "";
-    const price = toFiniteNumber(payload.c);
-    if (!symbol || price <= 0) return [];
-    return [[symbol, { price, change24h: toFiniteNumber(payload.P) }]];
-  }));
-};
-
 function useWatchlistPrices() {
   const [prices, setPrices] = useState<PriceState>(DEFAULT_PRICES);
 
   useEffect(() => {
     let cancelled = false;
-    let socket: WebSocket | null = null;
-    let reconnectTimer: number | null = null;
 
-    const fetchInitialPrices = async () => {
+    const fetchPrices = async () => {
       try {
         const response = await fetch("https://api.binance.com/api/v3/ticker/24hr", { cache: "no-store" });
         if (!response.ok) return;
-        const payload = (await response.json()) as unknown;
-        const nextPrices = parseTickerPayload(payload);
-        if (cancelled || Object.keys(nextPrices).length === 0) return;
-        setPrices((current) => ({ ...current, ...nextPrices }));
+        const data = (await response.json()) as unknown;
+        if (cancelled || !Array.isArray(data)) return;
+
+        setPrices((prevPrices) => {
+          const nextPrices = { ...prevPrices };
+          let updated = false;
+
+          data.forEach((value) => {
+            if (!value || typeof value !== "object") return;
+            const item = value as Record<string, unknown>;
+            const symbol = typeof item.symbol === "string" ? item.symbol.toUpperCase().trim() : "";
+            const newPrice = parseFloat(String(item.lastPrice));
+            const newChange = parseFloat(String(item.priceChangePercent));
+
+            if (!symbol || !Number.isFinite(newPrice) || !Number.isFinite(newChange) || newPrice <= 0) return;
+            if (!nextPrices[symbol] || nextPrices[symbol].price !== newPrice) {
+              nextPrices[symbol] = { price: newPrice, change24h: newChange };
+              updated = true;
+            }
+          });
+
+          return updated ? { ...nextPrices } : prevPrices;
+        });
       } catch {
-        // Keep any previously received snapshot when REST is unavailable.
+        // Keep the last known snapshot when REST is unavailable.
       }
     };
 
-    const connect = () => {
-      if (cancelled) return;
-      socket = new WebSocket("wss://stream.binance.com:9443/ws/!ticker@arr");
-      socket.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data) as unknown;
-          if (!Array.isArray(data) || cancelled) return;
-          console.log("WS Ticker received:", data.length);
-          setPrices((prev) => {
-            const nextPrices = { ...prev };
-            for (const item of data) {
-              if (!item || typeof item !== "object") continue;
-              const payload = item as Record<string, unknown>;
-              const symbol = typeof payload.s === "string" ? payload.s.toUpperCase().trim() : "";
-              const price = parseFloat(String(payload.c));
-              if (!symbol || !Number.isFinite(price) || price <= 0) continue;
-              nextPrices[symbol] = {
-                price,
-                change24h: parseFloat(String(payload.P)),
-              };
-            }
-            return { ...nextPrices };
-          });
-        } catch {
-          // Keep REST values if a stream payload is malformed.
-        }
-      };
-      socket.onerror = () => socket?.close();
-      socket.onclose = () => {
-        socket = null;
-        if (!cancelled) reconnectTimer = window.setTimeout(connect, 2000);
-      };
-    };
-
-    void fetchInitialPrices();
-    connect();
+    void fetchPrices();
+    const interval = window.setInterval(fetchPrices, 2000);
     return () => {
       cancelled = true;
-      if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
-      socket?.close();
+      window.clearInterval(interval);
     };
   }, []);
 
