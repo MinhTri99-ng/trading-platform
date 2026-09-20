@@ -17,6 +17,7 @@ import { SettingsModal } from "./components/SettingsModal";
 import { SearchModal } from "./components/SearchModal";
 import { AuthModal } from "./components/AuthModal";
 import { UserProfileModal } from "./components/UserProfileModal";
+import { Watchlist } from "./components/Watchlist";
 import { useAuth } from "./context/AuthContext";
 import { useSettings } from "./context/SettingsContext";
 import { useMarketRealtime, type MarketSignal } from "./hooks/useMarketRealtime";
@@ -49,16 +50,6 @@ const marketCards: MarketCard[] = [
   { pair: "ETH/USDT", price: 3524.12, change: 1.76, sentiment: "Bullish LONG", spark: [34.2, 34.8, 34.6, 35.1, 35.7, 35.5, 35.2, 35.9, 36.4, 36.8] },
   { pair: "SOL/USDT", price: 168.45, change: 3.34, sentiment: "Bullish LONG", spark: [154, 156, 161, 157, 162, 164, 167, 168, 170, 169] },
   { pair: "XRP/USDT", price: 0.6221, change: -0.42, sentiment: "Neutral WATCH", spark: [0.61, 0.62, 0.618, 0.614, 0.619, 0.621, 0.620, 0.618, 0.615, 0.617] },
-];
-
-const watchlist = [
-  { symbol: "BTC", price: 67340.25, change: 2.84 },
-  { symbol: "ETH", price: 3524.12, change: 1.76 },
-  { symbol: "SOL", price: 168.45, change: 3.34 },
-  { symbol: "XRP", price: 0.6221, change: -0.42 },
-  { symbol: "BNB", price: 598.34, change: 1.21 },
-  { symbol: "ADA", price: 0.74, change: -1.28 },
-  { symbol: "DOGE", price: 0.1742, change: 2.11 },
 ];
 
 type ScreenshotStatus = "idle" | "uploading" | "extracting" | "verifying" | "completed" | "invalid";
@@ -114,11 +105,6 @@ const formatMoney = (value: number, currency: "USD" | "VND" = "USD") =>
     style: "currency",
     currency,
     maximumFractionDigits: value >= 1000 ? 0 : 2,
-  }).format(value);
-
-const formatCompact = (value: number) =>
-  new Intl.NumberFormat("en-US", {
-    maximumFractionDigits: value < 100 ? 2 : 0,
   }).format(value);
 
 function StatBadge({ children, tone = "neutral" }: { children: React.ReactNode; tone?: "neutral" | "positive" | "negative" }) {
@@ -811,29 +797,13 @@ function App() {
               </div>
             </div>
 
-            <div className="rounded-[24px] border border-slate-800 bg-[#121721] p-4">
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-slate-100">{t("dashboard.watchlist")}</h3>
-                <span className="text-[10px] uppercase tracking-[0.18em] text-slate-500">{t("common.live")}</span>
-              </div>
-
-              <div className="space-y-2">
-                {watchlist.map((item) => (
-                  <div key={item.symbol} className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2.5">
-                    <div className="flex items-center gap-3">
-                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-800 text-[10px] font-bold text-slate-200">{item.symbol.slice(0, 2)}</span>
-                      <span className="text-sm font-medium text-slate-100">{item.symbol}</span>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-sm font-medium text-slate-100">{formatCompact(item.price)}</div>
-                      <div className={`text-[10px] font-semibold ${item.change >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
-                        {item.change >= 0 ? "+" : ""}{item.change.toFixed(2)}%
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <Watchlist
+              smcSettings={settings.smc}
+              minimumRiskReward={settings.risk.minimumRiskReward}
+              title={t("dashboard.watchlist")}
+              liveLabel={t("common.live")}
+              onSelectSymbol={setSelectedSymbol}
+            />
 
             <div className="rounded-[24px] border border-slate-800 bg-[#121721] p-4">
               <div className="mb-4 flex items-center justify-between">
