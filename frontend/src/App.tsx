@@ -22,6 +22,7 @@ import { useAuth } from "./context/AuthContext";
 import { useSettings } from "./context/SettingsContext";
 import { useMarketRealtime, type MarketSignal } from "./hooks/useMarketRealtime";
 import { useSMCAnalysis } from "./hooks/useSMCAnalysis";
+import { useMarketStructure, type MarketStructureData } from "./hooks/useMarketStructure";
 
 type Timeframe = "1m" | "5m" | "15m" | "30m" | "1H" | "4H" | "1D" | "1W";
 
@@ -70,6 +71,7 @@ type ScreenshotAnalysisResult = {
   takeProfit?: number;
   riskReward?: string;
   confidence?: number;
+  marketStructure?: MarketStructureData;
 };
 
 type TradeHistoryEntry = {
@@ -128,6 +130,7 @@ function App() {
   const [dragActive, setDragActive] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<ScreenshotAnalysisResult | null>(null);
   const [visionSignal, setVisionSignal] = useState<MarketSignal | null>(null);
+  const [visionStructure, setVisionStructure] = useState<MarketStructureData | null>(null);
   const [tradingSignalPanel, setTradingSignalPanel] = useState<MarketSignal | null>(null);
   const [tradeHistory, setTradeHistory] = useState<TradeHistoryEntry[]>(() => readTradeHistory());
   // Header owns modal visibility; the modal owns its draft form and returns a saved snapshot.
@@ -199,6 +202,7 @@ function App() {
     symbolCode: selectedSymbol,
     interval: timeframeToBinance(selectedTimeframe),
   });
+  const marketStructure = useMarketStructure(candles, visionStructure, selectedSymbol);
   const smcAnalysis = useSMCAnalysis(candles, settings.smc, settings.risk.minimumRiskReward);
   const smcMetrics = [
     { label: "Overall Bias", value: smcAnalysis.overallBiasScore },
@@ -245,6 +249,7 @@ function App() {
   const handleResetSignals = () => {
     setAnalysisResult(null);
     setVisionSignal(null);
+    setVisionStructure(null);
     setTradingSignalPanel(null);
     setUploadStatus("idle");
   };
@@ -336,7 +341,9 @@ function App() {
         takeProfit: generatedSignal?.takeProfit,
         riskReward: generatedSignal?.riskReward,
         confidence: generatedSignal?.confidence,
+        marketStructure: payload.marketStructure,
       });
+      setVisionStructure(payload.valid ? payload.marketStructure ?? null : null);
 
       if (payload.valid && generatedSignal && generatedSignal.direction !== "NONE") {
         const verifiedSymbol = normalizePairForDisplay(payload.symbol ?? selectedSymbol);
@@ -659,31 +666,27 @@ function App() {
               <div className="rounded-[22px] border border-slate-800 bg-[#121721] p-4">
                 <div className="mb-4 flex items-center justify-between">
                   <h3 className="text-[11px] uppercase tracking-[0.2em] text-slate-400">{t("dashboard.marketStructure")}</h3>
-                  <StatBadge tone="positive">{t("dashboard.uptrend")}</StatBadge>
+                  <span className="rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]" style={{ borderColor: `${marketStructure.badgeColor}66`, backgroundColor: `${marketStructure.badgeColor}1A`, color: marketStructure.badgeColor }}>
+                    {marketStructure.trendLabel}
+                  </span>
                 </div>
 
                 <div className="mb-4 flex flex-wrap gap-2">
-                  {[
-                    ["ChoCh", "8h ago"],
-                    ["BoS", "5h ago"],
-                    ["HL", "2h ago"],
-                    ["HH", "Now"],
-                  ].map(([label, time]) => (
-                    <div key={label} className="rounded-lg border border-slate-700 bg-slate-900/80 px-2.5 py-1.5 text-center">
-                      <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-blue-200">{label}</div>
-                      <div className="mt-1 text-[9px] text-slate-400">{time}</div>
+                  {marketStructure.events.map((event, index) => (
+                    <div key={`${event.type}-${event.time}-${index}`} className="rounded-lg border border-slate-700 bg-slate-900/80 px-2.5 py-1.5 text-center shadow-[0_0_16px_rgba(52,211,153,0.12)]">
+                      <div className={`text-[10px] font-bold uppercase tracking-[0.16em] ${event.isBullish ? "text-emerald-300" : "text-rose-300"}`}>{event.type}</div>
+                      <div className="mt-1 text-[9px] text-slate-400">{event.time}</div>
                     </div>
                   ))}
+                  {marketStructure.events.length === 0 && <span className="text-xs text-slate-500">Đang quét swing high / swing low...</span>}
                 </div>
 
-                <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/8 p-3">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-emerald-300">
+                <div className={`rounded-2xl border p-3 ${marketStructure.trend === "BEARISH" ? "border-rose-500/40 bg-rose-500/10" : marketStructure.trend === "BULLISH" ? "border-emerald-500/30 bg-emerald-500/8" : "border-amber-500/30 bg-amber-500/8"}`}>
+                  <div className={`flex items-center gap-2 text-sm font-semibold ${marketStructure.trend === "BEARISH" ? "text-rose-300" : marketStructure.trend === "BULLISH" ? "text-emerald-300" : "text-amber-300"}`}>
                     <ShieldCheck className="h-4 w-4" />
-                    {t("dashboard.bullishStructureIntact")}
+                    {marketStructure.statusSummary}
                   </div>
-                  <p className="mt-2 text-sm leading-6 text-slate-300">
-                    {activeSignal?.direction === "LONG" ? t("trade.longSetup") : activeSignal?.direction === "SHORT" ? t("trade.shortSetup") : t("trade.longSetup")}
-                  </p>
+                  <p className="mt-2 text-sm leading-6 text-slate-300">{marketStructure.setupRecommendation}</p>
                 </div>
               </div>
 
