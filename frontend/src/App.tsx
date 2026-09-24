@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Bot,
@@ -128,6 +128,8 @@ function App() {
   const [indicatorState, setIndicatorState] = useState({ ema50: true, ema200: true, volume: true });
   const [uploadStatus, setUploadStatus] = useState<ScreenshotStatus>("idle");
   const [dragActive, setDragActive] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const previewUrlRef = useRef<string | null>(null);
   const [analysisResult, setAnalysisResult] = useState<ScreenshotAnalysisResult | null>(null);
   const [visionSignal, setVisionSignal] = useState<MarketSignal | null>(null);
   const [visionStructure, setVisionStructure] = useState<MarketStructureData | null>(null);
@@ -252,9 +254,14 @@ function App() {
     setVisionStructure(null);
     setTradingSignalPanel(null);
     setUploadStatus("idle");
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = null;
+    }
+    setPreviewUrl(null);
   };
 
-  const handleAnalyzeScreenshot = async (file: File) => {
+  const handleFileUpload = async (file: File) => {
     const validType = file.type.startsWith("image/") || /\.(png|jpe?g|webp)$/i.test(file.name);
     if (!validType) {
       setUploadStatus("invalid");
@@ -266,6 +273,12 @@ function App() {
       return;
     }
 
+    setPreviewUrl((previous) => {
+      if (previous) {
+        URL.revokeObjectURL(previous);
+      }
+      return URL.createObjectURL(file);
+    });
     setUploadStatus("uploading");
     setAnalysisResult(null);
 
@@ -403,10 +416,71 @@ function App() {
     }
   };
 
+  const handlePaste = (event: React.ClipboardEvent) => {
+    const imageItem = Array.from(event.clipboardData.items).find((item) => item.type.startsWith("image/"));
+    const file = imageItem?.getAsFile();
+    if (file) {
+      event.preventDefault();
+      event.stopPropagation();
+      void handleFileUpload(file);
+    }
+  };
+
+  const handleGlobalPaste = (event: ClipboardEvent) => {
+    const imageItem = Array.from(event.clipboardData?.items ?? []).find((item) => item.type.startsWith("image/"));
+    const file = imageItem?.getAsFile();
+    if (file) {
+      event.preventDefault();
+      void handleFileUpload(file);
+    }
+  };
+
+  previewUrlRef.current = previewUrl;
+
+  const handlePasteFromClipboard = async () => {
+    try {
+      if (navigator.clipboard && "read" in navigator.clipboard) {
+        const clipboardItems = await navigator.clipboard.read();
+        for (const clipboardItem of clipboardItems) {
+          const imageType = clipboardItem.types.find((type) => type.startsWith("image/"));
+          if (imageType) {
+            const blob = await clipboardItem.getType(imageType);
+            void handleFileUpload(new File([blob], `pasted-chart.${imageType.split("/")[1]}`, { type: imageType }));
+            return;
+          }
+        }
+      }
+
+      if (navigator.clipboard && "readText" in navigator.clipboard) {
+        const text = await navigator.clipboard.readText();
+        if (text.startsWith("data:image/")) {
+          const response = await fetch(text);
+          const blob = await response.blob();
+          void handleFileUpload(new File([blob], "pasted-chart.png", { type: blob.type || "image/png" }));
+        }
+      }
+    } catch (error) {
+      console.warn("Clipboard image access was not available:", error);
+    }
+  };
+
+  useEffect(() => {
+    window.addEventListener("paste", handleGlobalPaste);
+    return () => {
+      window.removeEventListener("paste", handleGlobalPaste);
+    };
+  }, [handleGlobalPaste]);
+
+  useEffect(() => () => {
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current);
+    }
+  }, []);
+
   const handleFileInput = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      void handleAnalyzeScreenshot(file);
+      void handleFileUpload(file);
     }
   };
 
@@ -838,9 +912,11 @@ function App() {
                   setDragActive(false);
                   const file = event.dataTransfer.files?.[0];
                   if (file) {
-                    void handleAnalyzeScreenshot(file);
+                    void handleFileUpload(file);
                   }
                 }}
+                onPaste={handlePaste}
+                tabIndex={0}
               >
                 <input type="file" accept="image/*" className="hidden" onChange={handleFileInput} />
                 <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-violet-500/10 text-violet-200">
@@ -848,6 +924,19 @@ function App() {
                 </div>
                 <p className="text-sm font-medium text-slate-100">{t("common.upload")}</p>
                 <p className="mt-1 text-[11px] text-slate-400">{t("common.uploadSub")}</p>
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    void handlePasteFromClipboard();
+                  }}
+                  className="mt-3 rounded-lg border border-cyan-400/30 bg-cyan-400/10 px-3 py-2 text-[11px] font-semibold text-cyan-200 transition hover:border-cyan-300 hover:bg-cyan-400/20"
+                >
+                  📋 Dán ảnh từ Clipboard (Ctrl + V)
+                </button>
+                {previewUrl ? (
+                  <img src={previewUrl} alt="Chart preview" className="mt-3 max-h-32 w-full rounded-lg border border-slate-700 object-contain" />
+                ) : null}
               </label>
 
               <div className="mb-4 space-y-2 text-[10px] uppercase tracking-[0.15em] text-slate-400">
