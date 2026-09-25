@@ -74,17 +74,18 @@ type ScreenshotAnalysisResult = {
   marketStructure?: MarketStructureData;
 };
 
-type TradeHistoryEntry = {
+export interface TradeSignal {
   id: string;
   symbol: string;
-  direction: "LONG" | "SHORT";
-  entry: number;
-  stopLoss: number;
-  takeProfit: number;
-  confidence: number;
+  type: "LONG" | "SHORT";
   timeframe: string;
-  status: "TP" | "SL";
-  createdAt: string;
+  entry: number;
+  tp: number;
+  sl: number;
+  status: "TP" | "SL" | "RUNNING";
+  pnlPercent: number;
+  riskReward: string;
+  timestamp: string;
 };
 
 const STORAGE_KEYS = {
@@ -93,13 +94,24 @@ const STORAGE_KEYS = {
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL?.trim() || "http://localhost:8080").replace(/\/$/, "");
 
-const readTradeHistory = (): TradeHistoryEntry[] => {
+const initialSignals: TradeSignal[] = [
+  { id: "mock-btc", symbol: "BTC/USDT", type: "LONG", timeframe: "4H", entry: 67340, tp: 69200, sl: 66675, status: "TP", pnlPercent: 5.2, riskReward: "1:2.8", timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString() },
+  { id: "mock-eth", symbol: "ETH/USDT", type: "SHORT", timeframe: "15M", entry: 3524, tp: 3454, sl: 3560, status: "TP", pnlPercent: 3.1, riskReward: "1:2.0", timestamp: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString() },
+  { id: "mock-sol", symbol: "SOL/USDT", type: "LONG", timeframe: "1H", entry: 168.45, tp: 172.66, sl: 166.77, status: "SL", pnlPercent: -1.2, riskReward: "1:2.5", timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString() },
+  { id: "mock-near", symbol: "NEAR/USDT", type: "LONG", timeframe: "1H", entry: 5.82, tp: 6.34, sl: 5.65, status: "RUNNING", pnlPercent: 1.8, riskReward: "1:3.0", timestamp: new Date(Date.now() - 30 * 60 * 1000).toISOString() },
+];
+
+const readTradeHistory = (): TradeSignal[] => {
   try {
     const value = localStorage.getItem(STORAGE_KEYS.tradeHistory);
-    return value ? (JSON.parse(value) as TradeHistoryEntry[]) : [];
+    const parsed = value ? JSON.parse(value) : null;
+    if (Array.isArray(parsed) && parsed.every((entry) => entry && typeof entry.id === "string" && (entry.type === "LONG" || entry.type === "SHORT"))) {
+      return parsed as TradeSignal[];
+    }
   } catch {
-    return [];
+    // Ignore malformed or unavailable storage and use the starter history.
   }
+  return initialSignals;
 };
 
 const formatMoney = (value: number, currency: "USD" | "VND" = "USD") =>
@@ -108,6 +120,13 @@ const formatMoney = (value: number, currency: "USD" | "VND" = "USD") =>
     currency,
     maximumFractionDigits: value >= 1000 ? 0 : 2,
   }).format(value);
+
+const formatSignalAge = (timestamp: string) => {
+  const elapsedMinutes = Math.max(0, Math.floor((Date.now() - new Date(timestamp).getTime()) / 60000));
+  if (elapsedMinutes < 60) return `${Math.max(1, elapsedMinutes)}m ago`;
+  if (elapsedMinutes < 1440) return `${Math.floor(elapsedMinutes / 60)}h ago`;
+  return `${Math.floor(elapsedMinutes / 1440)}d ago`;
+};
 
 function StatBadge({ children, tone = "neutral" }: { children: React.ReactNode; tone?: "neutral" | "positive" | "negative" }) {
   const toneMap = {
@@ -134,7 +153,7 @@ function App() {
   const [visionSignal, setVisionSignal] = useState<MarketSignal | null>(null);
   const [visionStructure, setVisionStructure] = useState<MarketStructureData | null>(null);
   const [tradingSignalPanel, setTradingSignalPanel] = useState<MarketSignal | null>(null);
-  const [tradeHistory, setTradeHistory] = useState<TradeHistoryEntry[]>(() => readTradeHistory());
+  const [tradeHistory, setTradeHistory] = useState<TradeSignal[]>(() => readTradeHistory());
   // Header owns modal visibility; the modal owns its draft form and returns a saved snapshot.
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -144,10 +163,11 @@ function App() {
   const [profileTab, setProfileTab] = useState<"profile" | "password">("profile");
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
 
-  const historyPreview = tradeHistory.length > 0 ? tradeHistory.slice(0, 5) : [
-    { id: "demo-1", symbol: "BTC/USDT", direction: "LONG" as const, entry: 67340, stopLoss: 66800, takeProfit: 68200, confidence: 82, timeframe: "4H", status: "TP" as const, createdAt: new Date().toISOString() },
-    { id: "demo-2", symbol: "ETH/USDT", direction: "LONG" as const, entry: 3524, stopLoss: 3450, takeProfit: 3680, confidence: 76, timeframe: "1H", status: "SL" as const, createdAt: new Date(Date.now() - 3600000).toISOString() },
-  ];
+  const historyPreview = tradeHistory.slice(0, 5);
+  const closedSignals = tradeHistory.filter((entry) => entry.status !== "RUNNING");
+  const winRate = closedSignals.length > 0
+    ? Math.round((closedSignals.filter((entry) => entry.status === "TP").length / closedSignals.length) * 100)
+    : 0;
 
   const currentLanguage = i18n.resolvedLanguage || i18n.language || "en";
   const displayCurrency = settings.system.currency;
@@ -236,7 +256,7 @@ function App() {
     setIndicatorState((previous) => ({ ...previous, [key]: !previous[key] }));
   };
 
-  const persistTradeHistory = (entry: TradeHistoryEntry) => {
+  const persistTradeHistory = (entry: TradeSignal) => {
     setTradeHistory((previous) => {
       const next = [entry, ...previous].slice(0, 8);
       try {
@@ -365,17 +385,18 @@ function App() {
         setSelectedSymbol(verifiedSymbol);
         setSelectedTimeframe(verifiedTimeframe);
 
-        const tradeEntry: TradeHistoryEntry = {
+        const tradeEntry: TradeSignal = {
           id: `${Date.now()}`,
           symbol: verifiedSymbol,
-          direction: generatedSignal.direction,
-          entry: generatedSignal.entry,
-          stopLoss: generatedSignal.stopLoss,
-          takeProfit: generatedSignal.takeProfit,
-          confidence: generatedSignal.confidence,
+          type: generatedSignal.direction as "LONG" | "SHORT",
           timeframe: verifiedTimeframe,
-          status: generatedSignal.confidence >= 80 ? "TP" : "SL",
-          createdAt: new Date().toISOString(),
+          entry: generatedSignal.entry,
+          tp: generatedSignal.takeProfit,
+          sl: generatedSignal.stopLoss,
+          status: "RUNNING",
+          pnlPercent: 0,
+          riskReward: generatedSignal.riskReward,
+          timestamp: new Date().toISOString(),
         };
 
         setVisionSignal({
@@ -601,24 +622,25 @@ function App() {
       <div className="mx-auto max-w-[1700px] px-4 pb-12 pt-5 xl:px-6">
         <div className="flex flex-col lg:flex-row w-full gap-4">
           <aside className="hidden w-[260px] shrink-0 flex-col rounded-[22px] border border-slate-800 bg-[#121721] p-3 lg:flex">
-            <div className="mb-5 px-2 pt-1">
-              <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">{t("dashboard.tradeHistory")}</p>
+            <div className="mb-4 flex items-center justify-between gap-2 px-2 pt-1">
+              <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">LỊCH SỬ TÍN HIỆU</p>
+              <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-1 text-[9px] font-semibold text-emerald-300">Win Rate: {winRate}%</span>
             </div>
 
-            <div className="space-y-2">
+            <div className="signal-history-scroll max-h-[500px] space-y-2 overflow-y-auto pr-1">
               {historyPreview.map((entry) => (
-                <div key={entry.id} className="rounded-2xl border border-slate-800 bg-slate-950/60 p-2.5">
+                <div key={entry.id} className={`rounded-r-2xl border border-slate-800 border-l-2 bg-slate-950/60 p-2.5 ${entry.type === "LONG" ? "border-l-emerald-400" : "border-l-rose-400"}`}>
                   <div className="mb-2 flex items-center justify-between gap-2">
                     <span className="text-sm font-semibold text-slate-100">{entry.symbol}</span>
-                    <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] ${entry.status === "TP" ? "bg-emerald-500/15 text-emerald-300" : "bg-rose-500/15 text-rose-300"}`}>
+                    <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] ${entry.status === "TP" ? "bg-emerald-500/10 text-emerald-400" : entry.status === "SL" ? "bg-rose-500/10 text-rose-400" : "bg-amber-500/10 text-amber-400"}`}>
                       {entry.status}
                     </span>
                   </div>
                   <div className="space-y-1 text-[10px] text-slate-400">
-                    <div className="flex justify-between"><span>{entry.direction}</span><span>{entry.timeframe}</span></div>
-                    <div className="flex justify-between"><span>Vào</span><span>{formatMoney(entry.entry, displayCurrency)}</span></div>
-                    <div className="flex justify-between"><span>TP</span><span>{formatMoney(entry.takeProfit, displayCurrency)}</span></div>
-                    <div className="flex justify-between"><span>SL</span><span>{formatMoney(entry.stopLoss, displayCurrency)}</span></div>
+                    <div className="flex justify-between"><span className={entry.type === "LONG" ? "text-emerald-300" : "text-rose-300"}>{entry.type}</span><span>{entry.timeframe} • {formatSignalAge(entry.timestamp)}</span></div>
+                    <div className="flex justify-between"><span>Entry / TP / SL</span><span className="text-slate-300">{formatMoney(entry.entry, displayCurrency)} / {formatMoney(entry.tp, displayCurrency)} / {formatMoney(entry.sl, displayCurrency)}</span></div>
+                    <div className="flex justify-between"><span>R:R</span><span className="text-cyan-300">{entry.riskReward}</span></div>
+                    <div className="flex justify-between"><span>PnL</span><span className={entry.pnlPercent >= 0 ? "text-emerald-300" : "text-rose-300"}>{entry.pnlPercent >= 0 ? "+" : ""}{entry.pnlPercent.toFixed(1)}%</span></div>
                   </div>
                 </div>
               ))}
@@ -1011,10 +1033,10 @@ function App() {
                   tradeHistory.map((entry) => (
                     <div key={entry.id} className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2">
                       <div>
-                        <div className="text-sm font-semibold text-slate-100">{entry.symbol} {entry.direction}</div>
-                        <div className="text-[10px] text-slate-400">{entry.timeframe} • {new Date(entry.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                        <div className="text-sm font-semibold text-slate-100">{entry.symbol} {entry.type}</div>
+                        <div className="text-[10px] text-slate-400">{entry.timeframe} • {new Date(entry.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} • R:R {entry.riskReward} • {entry.pnlPercent >= 0 ? "+" : ""}{entry.pnlPercent.toFixed(1)}%</div>
                       </div>
-                      <span className={`rounded-full px-2 py-1 text-[9px] font-bold uppercase tracking-[0.14em] ${entry.status === "TP" ? "bg-emerald-500/15 text-emerald-300" : "bg-rose-500/15 text-rose-300"}`}>
+                      <span className={`rounded-full px-2 py-1 text-[9px] font-bold uppercase tracking-[0.14em] ${entry.status === "TP" ? "bg-emerald-500/10 text-emerald-400" : entry.status === "SL" ? "bg-rose-500/10 text-rose-400" : "bg-amber-500/10 text-amber-400"}`}>
                         {entry.status}
                       </span>
                     </div>
