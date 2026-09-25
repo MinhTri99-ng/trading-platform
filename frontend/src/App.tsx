@@ -89,8 +89,9 @@ export interface TradeSignal {
 };
 
 const STORAGE_KEYS = {
-  tradeHistory: "trading-platform-trade-history",
+  tradeHistory: "snapchart_signals",
 };
+const LEGACY_TRADE_HISTORY_KEY = "trading-platform-trade-history";
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL?.trim() || "http://localhost:8080").replace(/\/$/, "");
 
@@ -103,7 +104,7 @@ const initialSignals: TradeSignal[] = [
 
 const readTradeHistory = (): TradeSignal[] => {
   try {
-    const value = localStorage.getItem(STORAGE_KEYS.tradeHistory);
+    const value = localStorage.getItem(STORAGE_KEYS.tradeHistory) ?? localStorage.getItem(LEGACY_TRADE_HISTORY_KEY);
     const parsed = value ? JSON.parse(value) : null;
     if (Array.isArray(parsed) && parsed.every((entry) => entry && typeof entry.id === "string" && (entry.type === "LONG" || entry.type === "SHORT"))) {
       return parsed as TradeSignal[];
@@ -154,6 +155,7 @@ function App() {
   const [visionStructure, setVisionStructure] = useState<MarketStructureData | null>(null);
   const [tradingSignalPanel, setTradingSignalPanel] = useState<MarketSignal | null>(null);
   const [tradeHistory, setTradeHistory] = useState<TradeSignal[]>(() => readTradeHistory());
+  const [selectedSignalId, setSelectedSignalId] = useState<string | null>(null);
   // Header owns modal visibility; the modal owns its draft form and returns a saved snapshot.
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -268,11 +270,60 @@ function App() {
     });
   };
 
+  const handleLoadSignal = (entry: TradeSignal) => {
+    const loadedSignal: MarketSignal = {
+      symbol: entry.symbol,
+      direction: entry.type,
+      entry: entry.entry,
+      stopLoss: entry.sl,
+      takeProfit: entry.tp,
+      riskReward: entry.riskReward,
+      confidence: 100,
+      timestamp: new Date(entry.timestamp).getTime(),
+    };
+    setSelectedSignalId(entry.id);
+    setSelectedSymbol(entry.symbol);
+    setSelectedTimeframe(normalizeTimeframeForDisplay(entry.timeframe));
+    setVisionSignal(loadedSignal);
+    setTradingSignalPanel(loadedSignal);
+    setVisionStructure(null);
+  };
+
+  const handleDeleteSignal = (id: string) => {
+    setTradeHistory((previous) => {
+      const next = previous.filter((entry) => entry.id !== id);
+      try {
+        localStorage.setItem(STORAGE_KEYS.tradeHistory, JSON.stringify(next));
+      } catch {
+        // Ignore storage errors.
+      }
+      return next;
+    });
+    if (selectedSignalId === id) {
+      setSelectedSignalId(null);
+      setVisionSignal(null);
+      setTradingSignalPanel(null);
+    }
+  };
+
+  const handleClearAllSignals = () => {
+    setTradeHistory([]);
+    setSelectedSignalId(null);
+    setVisionSignal(null);
+    setTradingSignalPanel(null);
+    try {
+      localStorage.setItem(STORAGE_KEYS.tradeHistory, JSON.stringify([]));
+    } catch {
+      // Ignore storage errors.
+    }
+  };
+
   const handleResetSignals = () => {
     setAnalysisResult(null);
     setVisionSignal(null);
     setVisionStructure(null);
     setTradingSignalPanel(null);
+    setSelectedSignalId(null);
     setUploadStatus("idle");
     if (previewUrlRef.current) {
       URL.revokeObjectURL(previewUrlRef.current);
@@ -624,17 +675,33 @@ function App() {
           <aside className="hidden w-[260px] shrink-0 flex-col rounded-[22px] border border-slate-800 bg-[#121721] p-3 lg:flex">
             <div className="mb-4 flex items-center justify-between gap-2 px-2 pt-1">
               <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">LỊCH SỬ TÍN HIỆU</p>
-              <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-1 text-[9px] font-semibold text-emerald-300">Win Rate: {winRate}%</span>
+              <div className="flex items-center gap-1.5">
+                <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-1 text-[9px] font-semibold text-emerald-300">Win Rate: {winRate}%</span>
+                <button type="button" onClick={handleClearAllSignals} aria-label="Xóa tất cả tín hiệu" className="rounded-md px-1.5 py-1 text-[10px] text-slate-500 transition hover:bg-rose-500/10 hover:text-rose-400">Xóa tất cả</button>
+              </div>
             </div>
 
             <div className="signal-history-scroll max-h-[500px] space-y-2 overflow-y-auto pr-1">
               {historyPreview.map((entry) => (
-                <div key={entry.id} className={`rounded-r-2xl border border-slate-800 border-l-2 bg-slate-950/60 p-2.5 ${entry.type === "LONG" ? "border-l-emerald-400" : "border-l-rose-400"}`}>
+                <div
+                  key={entry.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => handleLoadSignal(entry)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      handleLoadSignal(entry);
+                    }
+                  }}
+                  className={`cursor-pointer rounded-r-2xl border border-slate-800 border-l-2 bg-slate-950/60 p-2.5 transition ${entry.type === "LONG" ? "border-l-emerald-400" : "border-l-rose-400"} ${selectedSignalId === entry.id ? "border-emerald-400 bg-slate-800/80" : "hover:border-slate-600 hover:bg-slate-900/80"}`}
+                >
                   <div className="mb-2 flex items-center justify-between gap-2">
                     <span className="text-sm font-semibold text-slate-100">{entry.symbol}</span>
-                    <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] ${entry.status === "TP" ? "bg-emerald-500/10 text-emerald-400" : entry.status === "SL" ? "bg-rose-500/10 text-rose-400" : "bg-amber-500/10 text-amber-400"}`}>
-                      {entry.status}
-                    </span>
+                    <div className="flex items-center gap-1">
+                      <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] ${entry.status === "TP" ? "bg-emerald-500/10 text-emerald-400" : entry.status === "SL" ? "bg-rose-500/10 text-rose-400" : "bg-amber-500/10 text-amber-400"}`}>{entry.status}</span>
+                      <button type="button" onClick={(event) => { event.stopPropagation(); handleDeleteSignal(entry.id); }} aria-label={`Xóa tín hiệu ${entry.symbol}`} className="p-1 text-slate-400 opacity-80 transition hover:text-rose-400 hover:opacity-100">✕</button>
+                    </div>
                   </div>
                   <div className="space-y-1 text-[10px] text-slate-400">
                     <div className="flex justify-between"><span className={entry.type === "LONG" ? "text-emerald-300" : "text-rose-300"}>{entry.type}</span><span>{entry.timeframe} • {formatSignalAge(entry.timestamp)}</span></div>
