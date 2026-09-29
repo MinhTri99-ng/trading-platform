@@ -6,7 +6,6 @@ import {
   ChevronDown,
   Search,
   Settings,
-  ShieldCheck,
   Sparkles,
   UserRound,
 } from "lucide-react";
@@ -17,6 +16,8 @@ import { SettingsModal } from "./components/SettingsModal";
 import { SearchModal } from "./components/SearchModal";
 import { AuthModal } from "./components/AuthModal";
 import { UserProfileModal } from "./components/UserProfileModal";
+import { MarketStructure } from "./components/MarketStructure";
+import { PricingModal } from "./components/PricingModal";
 import { Watchlist } from "./components/Watchlist";
 import { useAuth } from "./context/AuthContext";
 import { useSettings } from "./context/SettingsContext";
@@ -142,7 +143,7 @@ function StatBadge({ children, tone = "neutral" }: { children: React.ReactNode; 
 function App() {
   const { t, i18n } = useTranslation();
   const { settings, updateSettings } = useSettings();
-  const { user, isAuthenticated, logout } = useAuth();
+  const { user, isAuthenticated, isPro, logout } = useAuth();
   const [selectedSymbol, setSelectedSymbol] = useState("BTC/USDT");
   const [selectedTimeframe, setSelectedTimeframe] = useState<Timeframe>("4H");
   const [indicatorState, setIndicatorState] = useState({ ema50: true, ema200: true, volume: true });
@@ -162,6 +163,7 @@ function App() {
   const [isAIChatOpen, setIsAIChatOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isPricingOpen, setIsPricingOpen] = useState(false);
   const [profileTab, setProfileTab] = useState<"profile" | "password">("profile");
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
 
@@ -333,6 +335,10 @@ function App() {
   };
 
   const handleFileUpload = async (file: File) => {
+    if (!isPro) {
+      setIsPricingOpen(true);
+      return;
+    }
     const validType = file.type.startsWith("image/") || /\.(png|jpe?g|webp)$/i.test(file.name);
     if (!validType) {
       setUploadStatus("invalid");
@@ -633,6 +639,7 @@ function App() {
               <Bot className="h-3.5 w-3.5" />
               {t("nav.askAi")}
             </button>
+            {!isPro ? <button type="button" onClick={() => setIsPricingOpen(true)} className="flex items-center gap-2 rounded-xl border border-amber-300/70 bg-slate-900/80 px-3 py-2 text-xs font-bold text-amber-200 transition hover:bg-amber-300/10"><Sparkles className="h-3.5 w-3.5" />NÂNG CẤP PRO</button> : <span className="rounded-xl border border-emerald-400/40 bg-emerald-400/10 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-300">SMC PRO</span>}
             <div className="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/80 px-2 py-1.5">
               <span className="text-[10px] uppercase tracking-[0.18em] text-slate-500">{t("nav.language")}</span>
               <select
@@ -826,32 +833,7 @@ function App() {
             </div>
 
             <div className="mt-6 grid gap-4 xl:grid-cols-3">
-              <div className="rounded-[22px] border border-slate-800 bg-[#121721] p-4">
-                <div className="mb-4 flex items-center justify-between">
-                  <h3 className="text-[11px] uppercase tracking-[0.2em] text-slate-400">{t("dashboard.marketStructure")}</h3>
-                  <span className="rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]" style={{ borderColor: `${marketStructure.badgeColor}66`, backgroundColor: `${marketStructure.badgeColor}1A`, color: marketStructure.badgeColor }}>
-                    {marketStructure.trendLabel}
-                  </span>
-                </div>
-
-                <div className="mb-4 flex flex-wrap gap-2">
-                  {marketStructure.events.map((event, index) => (
-                    <div key={`${event.type}-${event.time}-${index}`} className="rounded-lg border border-slate-700 bg-slate-900/80 px-2.5 py-1.5 text-center shadow-[0_0_16px_rgba(52,211,153,0.12)]">
-                      <div className={`text-[10px] font-bold uppercase tracking-[0.16em] ${event.isBullish ? "text-emerald-300" : "text-rose-300"}`}>{event.type}</div>
-                      <div className="mt-1 text-[9px] text-slate-400">{event.time}</div>
-                    </div>
-                  ))}
-                  {marketStructure.events.length === 0 && <span className="text-xs text-slate-500">Đang quét swing high / swing low...</span>}
-                </div>
-
-                <div className={`rounded-2xl border p-3 ${marketStructure.trend === "BEARISH" ? "border-rose-500/40 bg-rose-500/10" : marketStructure.trend === "BULLISH" ? "border-emerald-500/30 bg-emerald-500/8" : "border-amber-500/30 bg-amber-500/8"}`}>
-                  <div className={`flex items-center gap-2 text-sm font-semibold ${marketStructure.trend === "BEARISH" ? "text-rose-300" : marketStructure.trend === "BULLISH" ? "text-emerald-300" : "text-amber-300"}`}>
-                    <ShieldCheck className="h-4 w-4" />
-                    {marketStructure.statusSummary}
-                  </div>
-                  <p className="mt-2 text-sm leading-6 text-slate-300">{marketStructure.setupRecommendation}</p>
-                </div>
-              </div>
+              <MarketStructure data={marketStructure} isPro={isPro} onUpgrade={() => setIsPricingOpen(true)} />
 
               <div className="rounded-[22px] border border-slate-800 bg-[#121721] p-4">
                 {hasSignal && activeSignal ? (
@@ -1138,6 +1120,7 @@ function App() {
       <SearchModal isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} onToggleOpen={() => setIsSearchOpen((open) => !open)} onSelectSymbol={setSelectedSymbol} onOpenSettings={() => setIsSettingsOpen(true)} onOpenAIChat={() => setIsAIChatOpen(true)} onToggleTheme={() => updateSettings({ chart: { theme: settings.chart.theme === "dark" ? "light" : "dark" } })} isDarkTheme={settings.chart.theme === "dark"} />
       <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} onSave={() => setIsSettingsOpen(false)} />
       <AuthModal isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} />
+      <PricingModal isOpen={isPricingOpen} onClose={() => setIsPricingOpen(false)} />
       <UserProfileModal key={`${isProfileOpen}-${profileTab}`} isOpen={isProfileOpen} initialTab={profileTab} onClose={() => setIsProfileOpen(false)} />
     </div>
   );
