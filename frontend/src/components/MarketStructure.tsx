@@ -4,13 +4,15 @@ import type { MarketStructureData } from "../hooks/useMarketStructure";
 type MarketStructureProps = {
   data: MarketStructureData;
   isPro: boolean;
+  isAdmin?: boolean;
   onUpgrade: () => void;
 };
 
-export function MarketStructure({ data, isPro, onUpgrade }: MarketStructureProps) {
+export function MarketStructure({ data, isPro, isAdmin = false, onUpgrade }: MarketStructureProps) {
+  const unlocked = isPro || isAdmin;
   return (
     <div className="relative overflow-hidden rounded-[22px] border border-slate-800 bg-[#121721] p-4">
-      <div className={!isPro ? "select-none blur-[2px]" : undefined} aria-hidden={!isPro}>
+      <div className={!unlocked ? "select-none blur-[2px]" : undefined} aria-hidden={!unlocked}>
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Cấu trúc thị trường</h3>
           <span className="rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]" style={{ borderColor: `${data.badgeColor}66`, backgroundColor: `${data.badgeColor}1A`, color: data.badgeColor }}>
@@ -37,7 +39,7 @@ export function MarketStructure({ data, isPro, onUpgrade }: MarketStructureProps
         </div>
       </div>
 
-      {!isPro && (
+      {!unlocked && (
         <div className="absolute inset-0 flex items-center justify-center bg-slate-900/80 p-4 backdrop-blur-sm">
           <div className="max-w-[260px] text-center">
             <LockKeyhole className="mx-auto mb-3 h-9 w-9 text-amber-300 drop-shadow-[0_0_12px_rgba(252,211,77,0.8)]" />

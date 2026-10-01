@@ -7,6 +7,7 @@ import {
   Search,
   Settings,
   Sparkles,
+  Zap,
   UserRound,
 } from "lucide-react";
 
@@ -143,10 +144,11 @@ function StatBadge({ children, tone = "neutral" }: { children: React.ReactNode; 
 function App() {
   const { t, i18n } = useTranslation();
   const { settings, updateSettings } = useSettings();
-  const { user, isAuthenticated, isPro, logout } = useAuth();
+  const { user, isAuthenticated, isAdmin, isPro, logout } = useAuth();
   const [selectedSymbol, setSelectedSymbol] = useState("BTC/USDT");
   const [selectedTimeframe, setSelectedTimeframe] = useState<Timeframe>("4H");
   const [indicatorState, setIndicatorState] = useState({ ema50: true, ema200: true, volume: true });
+  const [showSmcOverlay, setShowSmcOverlay] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<ScreenshotStatus>("idle");
   const [dragActive, setDragActive] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -805,6 +807,14 @@ function App() {
                     {indicator.label}
                   </button>
                 ))}
+                <button
+                  type="button"
+                  aria-pressed={showSmcOverlay}
+                  onClick={() => setShowSmcOverlay((active) => !active)}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] transition ${showSmcOverlay ? "border-emerald-400/60 bg-emerald-400/15 text-emerald-300 shadow-[0_0_14px_rgba(52,211,153,0.2)]" : "border-slate-700 bg-slate-900/70 text-slate-400 hover:border-slate-600"}`}
+                >
+                  <Zap className="h-3 w-3" /> Hiển thị SMC
+                </button>
               </div>
 
               <div className="relative overflow-hidden rounded-[22px] border border-slate-800 bg-[#0B0E14]">
@@ -821,6 +831,7 @@ function App() {
                     showEma50={indicatorState.ema50}
                     showEma200={indicatorState.ema200}
                     showVolume={indicatorState.volume}
+                    showSmcOverlay={showSmcOverlay}
                     positionType={activeSignal?.direction ?? null}
                     entryLine={activeSignal?.entry ?? null}
                     stopLossLine={activeSignal?.stopLoss ?? null}
@@ -833,7 +844,7 @@ function App() {
             </div>
 
             <div className="mt-6 grid gap-4 xl:grid-cols-3">
-              <MarketStructure data={marketStructure} isPro={isPro} onUpgrade={() => setIsPricingOpen(true)} />
+              <MarketStructure data={marketStructure} isPro={isPro} isAdmin={isAdmin} onUpgrade={() => setIsPricingOpen(true)} />
 
               <div className="rounded-[22px] border border-slate-800 bg-[#121721] p-4">
                 {hasSignal && activeSignal ? (

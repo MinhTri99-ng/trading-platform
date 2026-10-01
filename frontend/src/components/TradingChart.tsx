@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import {
+  AreaSeries,
   CandlestickSeries,
   ColorType,
   HistogramSeries,
@@ -23,6 +24,7 @@ export interface TradingChartProps {
   showEma50?: boolean;
   showEma200?: boolean;
   showVolume?: boolean;
+  showSmcOverlay?: boolean;
   positionType?: "LONG" | "SHORT" | "NONE" | null;
   entryLine?: number | null;
   stopLossLine?: number | null;
@@ -72,6 +74,40 @@ const normalizeEMA = (candles: BinanceKlineCandle[], period: number): LineData<U
   }));
 };
 
+type SmcOverlay = {
+  bos: number | null;
+  choch: number | null;
+  orderBlock: { high: number; low: number; bullish: boolean; startTime: UTCTimestamp } | null;
+};
+
+const calculateSmcOverlay = (candles: BinanceKlineCandle[]): SmcOverlay => {
+  const ordered = candles.filter((candle) => [candle.openTime, candle.high, candle.low, candle.close].every(Number.isFinite)).sort((left, right) => left.openTime - right.openTime);
+  if (ordered.length < 5) return { bos: null, choch: null, orderBlock: null };
+
+  const swingHighs = ordered.slice(1, -1).filter((candle, index) => {
+    const previous = ordered[index];
+    const next = ordered[index + 2];
+    return candle.high >= previous.high && candle.high >= next.high;
+  });
+  const swingLows = ordered.slice(1, -1).filter((candle, index) => {
+    const previous = ordered[index];
+    const next = ordered[index + 2];
+    return candle.low <= previous.low && candle.low <= next.low;
+  });
+  const latest = ordered[ordered.length - 1];
+  const latestSwingHigh = swingHighs[swingHighs.length - 1];
+  const latestSwingLow = swingLows[swingLows.length - 1];
+  const bullishBreak = latestSwingHigh && latest.close > latestSwingHigh.high;
+  const bearishBreak = latestSwingLow && latest.close < latestSwingLow.low;
+  const breakIndex = bullishBreak || bearishBreak ? ordered.length - 2 : -1;
+  const breakCandle = breakIndex >= 0 ? ordered[breakIndex] : null;
+  const orderBlock = breakCandle && ((bullishBreak && breakCandle.close < breakCandle.open) || (bearishBreak && breakCandle.close > breakCandle.open))
+    ? { high: breakCandle.high, low: breakCandle.low, bullish: Boolean(bullishBreak), startTime: toChartTime(breakCandle.openTime) }
+    : null;
+
+  return { bos: bullishBreak ? latestSwingHigh.high : null, choch: bearishBreak ? latestSwingLow.low : null, orderBlock };
+};
+
 export function TradingChart({
   symbol,
   candles,
@@ -79,6 +115,7 @@ export function TradingChart({
   showEma50 = true,
   showEma200 = true,
   showVolume = true,
+  showSmcOverlay = false,
   positionType = null,
   entryLine = null,
   stopLossLine = null,
@@ -97,8 +134,11 @@ export function TradingChart({
   const poiLineSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const inducementLineSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const bosLineSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const chochLineSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const hlLineSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const hhLineSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const bullishOrderBlockRef = useRef<ISeriesApi<"Area"> | null>(null);
+  const bearishOrderBlockRef = useRef<ISeriesApi<"Area"> | null>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -251,6 +291,35 @@ export function TradingChart({
       lastValueVisible: false,
     });
 
+    const chochSeries = chart.addSeries(LineSeries, {
+      color: "#FB7185",
+      lineWidth: 2,
+      lineStyle: 2,
+      visible: false,
+      priceLineVisible: false,
+      lastValueVisible: false,
+    });
+
+    const bullishOrderBlockSeries = chart.addSeries(AreaSeries, {
+      topColor: "rgba(16, 185, 129, 0.2)",
+      bottomColor: "rgba(16, 185, 129, 0.04)",
+      lineColor: "rgba(52, 211, 153, 0.75)",
+      lineWidth: 1,
+      visible: false,
+      priceLineVisible: false,
+      lastValueVisible: false,
+    });
+
+    const bearishOrderBlockSeries = chart.addSeries(AreaSeries, {
+      topColor: "rgba(239, 68, 68, 0.2)",
+      bottomColor: "rgba(239, 68, 68, 0.04)",
+      lineColor: "rgba(251, 113, 133, 0.75)",
+      lineWidth: 1,
+      visible: false,
+      priceLineVisible: false,
+      lastValueVisible: false,
+    });
+
     chart.priceScale("volume").applyOptions({
       scaleMargins: { top: 0.82, bottom: 0 },
       borderVisible: false,
@@ -271,6 +340,9 @@ export function TradingChart({
     bosLineSeriesRef.current = bosSeries;
     hlLineSeriesRef.current = hlSeries;
     hhLineSeriesRef.current = hhSeries;
+    chochLineSeriesRef.current = chochSeries;
+    bullishOrderBlockRef.current = bullishOrderBlockSeries;
+    bearishOrderBlockRef.current = bearishOrderBlockSeries;
 
     const resizeObserver = new ResizeObserver((entries) => {
       const entry = entries[0];
@@ -299,6 +371,9 @@ export function TradingChart({
       bosLineSeriesRef.current = null;
       hlLineSeriesRef.current = null;
       hhLineSeriesRef.current = null;
+      chochLineSeriesRef.current = null;
+      bullishOrderBlockRef.current = null;
+      bearishOrderBlockRef.current = null;
     };
   }, []);
 
@@ -325,6 +400,7 @@ export function TradingChart({
     const volumeData = normalizeVolume(candles);
     const ema50 = normalizeEMA(candles, 50);
     const ema200 = normalizeEMA(candles, 200);
+    const smcOverlay = calculateSmcOverlay(candles);
 
     if (candlestickSeriesRef.current) {
       candlestickSeriesRef.current.setData(normalized);
@@ -413,12 +489,36 @@ export function TradingChart({
         hhLineSeriesRef.current.setData(structureLevels.hh ?? []);
         hhLineSeriesRef.current.applyOptions({ visible: Boolean(structureLevels.hh), color: "#A78BFA", lineWidth: 2 });
       }
+
+      const overlayLine = (level: number | null) => level == null ? [] : [{ time: firstTime, value: level }, { time: lastTime, value: level }];
+      if (bosLineSeriesRef.current) {
+        bosLineSeriesRef.current.setData(overlayLine(smcOverlay.bos));
+        bosLineSeriesRef.current.applyOptions({ visible: showSmcOverlay && smcOverlay.bos != null, color: "#34D399", lineWidth: 2, lineStyle: 2 });
+      }
+      if (chochLineSeriesRef.current) {
+        chochLineSeriesRef.current.setData(overlayLine(smcOverlay.choch));
+        chochLineSeriesRef.current.applyOptions({ visible: showSmcOverlay && smcOverlay.choch != null, color: "#FB7185", lineWidth: 2, lineStyle: 2 });
+      }
+      const orderBlockData = smcOverlay.orderBlock && normalized.length > 0
+        ? normalized.filter((candle) => candle.time >= smcOverlay.orderBlock!.startTime).map((candle) => ({ time: candle.time, value: smcOverlay.orderBlock!.high }))
+        : [];
+      const orderBlockOptions = smcOverlay.orderBlock ? { baseValue: { type: "price" as const, price: smcOverlay.orderBlock.low } } : { baseValue: undefined };
+      if (bullishOrderBlockRef.current) {
+        bullishOrderBlockRef.current.setData(smcOverlay.orderBlock?.bullish ? orderBlockData : []);
+        bullishOrderBlockRef.current.applyOptions({ ...orderBlockOptions, visible: showSmcOverlay && Boolean(smcOverlay.orderBlock?.bullish) });
+      }
+      if (bearishOrderBlockRef.current) {
+        bearishOrderBlockRef.current.setData(smcOverlay.orderBlock && !smcOverlay.orderBlock.bullish ? orderBlockData : []);
+        bearishOrderBlockRef.current.applyOptions({ ...orderBlockOptions, visible: showSmcOverlay && Boolean(smcOverlay.orderBlock && !smcOverlay.orderBlock.bullish) });
+      }
     }
 
     if (normalized.length > 0) {
       chartRef.current.timeScale().fitContent();
     }
-  }, [candles, entryLine, stopLossLine, takeProfitLine, structure]);
+  }, [candles, entryLine, stopLossLine, takeProfitLine, structure, showSmcOverlay]);
+
+  const smcOverlay = calculateSmcOverlay(candles);
 
   return (
     <div className="rounded-[28px] border border-slate-800 bg-slate-950/80 p-4 shadow-2xl shadow-slate-950/30">
@@ -439,7 +539,13 @@ export function TradingChart({
       <div
         ref={containerRef}
         className="relative h-full min-h-[400px] w-full overflow-hidden rounded-2xl border border-slate-800 bg-[#0B0E14]"
-      />
+      >
+        {showSmcOverlay ? <div className="pointer-events-none absolute right-3 top-3 z-10 flex flex-col items-end gap-1 text-[9px] font-bold uppercase tracking-[0.14em]">
+          {smcOverlay.bos != null ? <span className="rounded border border-emerald-400/40 bg-emerald-400/15 px-2 py-1 text-emerald-300">BOS 1H</span> : null}
+          {smcOverlay.choch != null ? <span className="rounded border border-orange-400/40 bg-orange-400/15 px-2 py-1 text-orange-300">CHOCH 1H</span> : null}
+          {smcOverlay.orderBlock ? <span className={`rounded border px-2 py-1 ${smcOverlay.orderBlock.bullish ? "border-emerald-400/40 bg-emerald-400/15 text-emerald-300" : "border-rose-400/40 bg-rose-400/15 text-rose-300"}`}>OB 1H</span> : null}
+        </div> : null}
+      </div>
     </div>
   );
 }

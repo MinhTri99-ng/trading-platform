@@ -25,12 +25,14 @@ vi.mock('lightweight-charts', () => {
   const CandlestickSeries = 'CandlestickSeries';
   const HistogramSeries = 'HistogramSeries';
   const LineSeries = 'LineSeries';
+  const AreaSeries = 'AreaSeries';
 
   return {
     createChart,
     CandlestickSeries,
     HistogramSeries,
     LineSeries,
+    AreaSeries,
     ColorType: { Solid: 'solid' },
   };
 });
