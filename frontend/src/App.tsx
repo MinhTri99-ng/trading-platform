@@ -18,7 +18,7 @@ import { SearchModal } from "./components/SearchModal";
 import { AuthModal } from "./components/AuthModal";
 import { UserProfileModal } from "./components/UserProfileModal";
 import { MarketStructure } from "./components/MarketStructure";
-import { PricingModal } from "./components/PricingModal";
+import { AdBanner } from "./components/AdBanner";
 import { Watchlist } from "./components/Watchlist";
 import { useAuth } from "./context/AuthContext";
 import { useSettings } from "./context/SettingsContext";
@@ -144,7 +144,7 @@ function StatBadge({ children, tone = "neutral" }: { children: React.ReactNode; 
 function App() {
   const { t, i18n } = useTranslation();
   const { settings, updateSettings } = useSettings();
-  const { user, isAuthenticated, isAdmin, isPro, logout } = useAuth();
+  const { user, isAuthenticated, logout } = useAuth();
   const [selectedSymbol, setSelectedSymbol] = useState("BTC/USDT");
   const [selectedTimeframe, setSelectedTimeframe] = useState<Timeframe>("4H");
   const [indicatorState, setIndicatorState] = useState({ ema50: true, ema200: true, volume: true });
@@ -165,7 +165,6 @@ function App() {
   const [isAIChatOpen, setIsAIChatOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const [isPricingOpen, setIsPricingOpen] = useState(false);
   const [profileTab, setProfileTab] = useState<"profile" | "password">("profile");
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
 
@@ -337,10 +336,6 @@ function App() {
   };
 
   const handleFileUpload = async (file: File) => {
-    if (!isPro) {
-      setIsPricingOpen(true);
-      return;
-    }
     const validType = file.type.startsWith("image/") || /\.(png|jpe?g|webp)$/i.test(file.name);
     if (!validType) {
       setUploadStatus("invalid");
@@ -641,7 +636,6 @@ function App() {
               <Bot className="h-3.5 w-3.5" />
               {t("nav.askAi")}
             </button>
-            {!isPro ? <button type="button" onClick={() => setIsPricingOpen(true)} className="flex items-center gap-2 rounded-xl border border-amber-300/70 bg-slate-900/80 px-3 py-2 text-xs font-bold text-amber-200 transition hover:bg-amber-300/10"><Sparkles className="h-3.5 w-3.5" />NÂNG CẤP PRO</button> : <span className="rounded-xl border border-emerald-400/40 bg-emerald-400/10 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-300">SMC PRO</span>}
             <div className="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/80 px-2 py-1.5">
               <span className="text-[10px] uppercase tracking-[0.18em] text-slate-500">{t("nav.language")}</span>
               <select
@@ -678,6 +672,10 @@ function App() {
           </div>
         </div>
       </header>
+
+      <div className="mx-auto max-w-[1700px] px-4 pt-4 xl:px-6">
+        <AdBanner slotId="dashboard-topbar" format="horizontal" />
+      </div>
 
       <div className="mx-auto max-w-[1700px] px-4 pb-12 pt-5 xl:px-6">
         <div className="flex flex-col lg:flex-row w-full gap-4">
@@ -844,7 +842,10 @@ function App() {
             </div>
 
             <div className="mt-6 grid gap-4 xl:grid-cols-3">
-              <MarketStructure data={marketStructure} isPro={isPro} isAdmin={isAdmin} onUpgrade={() => setIsPricingOpen(true)} />
+              <div className="flex min-w-0 flex-col gap-4">
+                <MarketStructure data={marketStructure} />
+                <AdBanner slotId="market-structure" format="rectangle" />
+              </div>
 
               <div className="rounded-[22px] border border-slate-800 bg-[#121721] p-4">
                 {hasSignal && activeSignal ? (
@@ -961,6 +962,7 @@ function App() {
               liveLabel={t("common.live")}
               onSelectSymbol={setSelectedSymbol}
             />
+            <AdBanner slotId="watchlist" format="horizontal" />
 
             <div className="rounded-[24px] border border-slate-800 bg-[#121721] p-4">
               <div className="mb-4 flex items-center justify-between">
@@ -1131,7 +1133,6 @@ function App() {
       <SearchModal isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} onToggleOpen={() => setIsSearchOpen((open) => !open)} onSelectSymbol={setSelectedSymbol} onOpenSettings={() => setIsSettingsOpen(true)} onOpenAIChat={() => setIsAIChatOpen(true)} onToggleTheme={() => updateSettings({ chart: { theme: settings.chart.theme === "dark" ? "light" : "dark" } })} isDarkTheme={settings.chart.theme === "dark"} />
       <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} onSave={() => setIsSettingsOpen(false)} />
       <AuthModal isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} />
-      <PricingModal isOpen={isPricingOpen} onClose={() => setIsPricingOpen(false)} />
       <UserProfileModal key={`${isProfileOpen}-${profileTab}`} isOpen={isProfileOpen} initialTab={profileTab} onClose={() => setIsProfileOpen(false)} />
     </div>
   );
