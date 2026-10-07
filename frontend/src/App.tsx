@@ -561,11 +561,11 @@ function App() {
 
   return (
     <div className={`min-h-screen ${settings.chart.theme === "light" ? "bg-slate-100 text-slate-900" : "bg-[#0B0E14] text-slate-100"}`}>
-      <header className={`sticky top-0 z-50 border-b border-slate-800/90 backdrop-blur-xl ${settings.chart.theme === "light" ? "bg-slate-100/90" : "bg-[#0B0E14]/90"}`}>
-        <div className="mx-auto flex min-w-max max-w-[1700px] items-center justify-between gap-4 overflow-x-auto whitespace-nowrap px-4 py-3.5 xl:px-6">
-          <div className="flex shrink-0 min-w-0 items-center gap-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-cyan-400/20 bg-slate-950/80 shadow-[0_0_22px_rgba(0,240,255,0.16)]">
+      <header className={`sticky top-0 z-40 flex w-full items-center justify-between gap-2 overflow-hidden border-b border-slate-800 px-4 py-2.5 backdrop-blur-md ${settings.chart.theme === "light" ? "bg-slate-100/90" : "bg-slate-900/90"}`}>
+        <div className="mx-auto flex w-full max-w-[1700px] items-center justify-between gap-2 overflow-hidden">
+          <div className="flex min-w-0 flex-shrink-0 items-center gap-2 sm:gap-4">
+            <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border border-cyan-400/20 bg-slate-950/80 shadow-[0_0_22px_rgba(0,240,255,0.16)] sm:h-11 sm:w-11">
                 <svg viewBox="0 0 48 48" className="h-9 w-9 drop-shadow-[0_0_5px_rgba(0,240,255,0.6)]" role="img" aria-label="SnapChart scanner logo">
                   <defs>
                     <linearGradient id="snapchart-logo-gradient" x1="4" y1="4" x2="44" y2="44" gradientUnits="userSpaceOnUse">
@@ -580,7 +580,7 @@ function App() {
                   <path d="m34 10 1.2 3.8L39 15l-3.8 1.2L34 20l-1.2-3.8L29 15l3.8-1.2L34 10Z" fill="#D9FEFF" />
                 </svg>
               </div>
-              <div className="min-w-0">
+              <div className="hidden min-w-0 md:block">
                 <div className="flex items-center gap-2">
                   <span className="text-lg font-semibold leading-none tracking-tight text-white">Snap<span className="bg-gradient-to-r from-[#00F0FF] to-[#3B82F6] bg-clip-text text-transparent">Chart</span></span>
                   <span className="rounded-md border border-cyan-300/50 bg-cyan-400/10 px-1.5 py-1 text-[8px] font-bold uppercase tracking-[0.18em] text-cyan-200 backdrop-blur-md">AI PRO</span>
@@ -589,13 +589,13 @@ function App() {
               </div>
             </div>
 
-            <label className="relative shrink-0">
+            <label className="relative flex-shrink-0">
               <span className="sr-only">Chọn cặp giao dịch</span>
               <select
                 aria-label="Chọn cặp giao dịch"
                 value={selectedSymbol}
                 onChange={(event) => setSelectedSymbol(event.target.value)}
-                className="appearance-none rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-2 pr-8 text-sm font-medium text-slate-200 outline-none transition hover:border-slate-700 focus:border-blue-500"
+                className="w-[92px] appearance-none rounded-lg border border-slate-800 bg-slate-900/70 px-2.5 py-1.5 pr-7 text-xs font-medium text-slate-200 outline-none transition hover:border-slate-700 focus:border-blue-500 sm:w-auto sm:rounded-xl sm:px-3 sm:py-2 sm:text-sm"
               >
                 {quickSymbols.map((symbol) => (
                   <option key={symbol} value={symbol}>
@@ -603,41 +603,40 @@ function App() {
                   </option>
                 ))}
               </select>
-              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+              <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400 sm:right-2.5" />
             </label>
           </div>
 
-          <div className="hidden shrink-0 items-center gap-5 lg:flex">
-            <div className="flex shrink-0 whitespace-nowrap items-center gap-3 rounded-full border border-slate-800 bg-slate-900/80 px-3 py-1.5">
+          <div className="no-scrollbar hidden items-center gap-2 overflow-x-auto text-xs text-slate-400 xl:flex">
+            <div className="flex flex-shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border border-slate-700/50 bg-slate-800/50 px-2.5 py-1">
               <span className="text-[10px] uppercase tracking-[0.18em] text-slate-500">{t("nav.marketCap")}</span>
               <span className="text-sm font-semibold text-slate-100">{currencySymbol}2.41T</span>
               <span className="text-xs font-medium text-emerald-300">+1.8%</span>
             </div>
-            <div className="flex shrink-0 whitespace-nowrap items-center gap-3 rounded-full border border-slate-800 bg-slate-900/80 px-3 py-1.5">
+            <div className="flex flex-shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border border-slate-700/50 bg-slate-800/50 px-2.5 py-1">
               <span className="text-[10px] uppercase tracking-[0.18em] text-slate-500">{t("nav.btcDom")}</span>
               <span className="text-sm font-semibold text-slate-100">54.2%</span>
               <span className="text-xs font-medium text-emerald-300">+0.3%</span>
             </div>
-            <div className="flex shrink-0 whitespace-nowrap items-center gap-3 rounded-full border border-slate-800 bg-slate-900/80 px-3 py-1.5">
+            <div className="flex flex-shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border border-slate-700/50 bg-slate-800/50 px-2.5 py-1">
               <span className="text-[10px] uppercase tracking-[0.18em] text-slate-500">{t("nav.volume24h")}</span>
               <span className="text-sm font-semibold text-slate-100">{currencySymbol}98.4B</span>
             </div>
           </div>
 
-          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-            <button type="button" aria-label="Tìm kiếm" onClick={() => setIsSearchOpen(true)} className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-800 bg-slate-900/80 text-slate-200 transition hover:border-slate-700">
+          <div className="flex items-center gap-1.5 flex-shrink-0 sm:gap-2">
+            <button type="button" aria-label="Tìm kiếm" onClick={() => setIsSearchOpen(true)} className="rounded-lg border border-slate-700 bg-slate-800/60 p-2 text-slate-300 transition hover:bg-slate-700">
               <Search className="h-4 w-4" />
             </button>
             <button
               type="button"
               onClick={() => setIsAIChatOpen(true)}
-              className="flex items-center gap-2 rounded-xl border border-violet-500/35 bg-violet-500/10 px-3 py-2 text-xs font-semibold text-violet-200 transition hover:border-violet-400/50"
+              className="flex items-center gap-1.5 rounded-lg border border-indigo-500/30 bg-indigo-600/20 px-2.5 py-1.5 text-xs font-semibold text-indigo-400 transition hover:bg-indigo-600/30 sm:px-3"
             >
-              <Bot className="h-3.5 w-3.5" />
-              {t("nav.askAi")}
+              <Bot className="h-4 w-4" />
+              <span className="hidden sm:inline">{t("nav.askAi")}</span>
             </button>
-            <div className="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/80 px-2 py-1.5">
-              <span className="text-[10px] uppercase tracking-[0.18em] text-slate-500">{t("nav.language")}</span>
+            <div className="flex items-center rounded-lg border border-slate-700 bg-slate-800/60 px-1.5 py-1.5">
               <select
                 aria-label={t("nav.language")}
                 value={currentLanguage}
@@ -647,28 +646,28 @@ function App() {
                     void i18n.changeLanguage(nextLanguage);
                   }
                 }}
-                className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-xs font-medium text-slate-100 outline-none transition focus:border-blue-500"
+                className="w-10 appearance-none bg-transparent px-0.5 text-center text-[10px] font-bold uppercase text-slate-200 outline-none"
               >
                 {languageOptions.map((language) => (
                   <option key={language.code} value={language.code}>
-                    {language.label}
+                    {language.code === "vi" ? "VN" : language.code.toUpperCase()}
                   </option>
                 ))}
               </select>
             </div>
-            <button type="button" aria-label="Mở cài đặt" onClick={() => setIsSettingsOpen(true)} className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-800 bg-slate-900/80 text-slate-200 transition hover:border-slate-700">
+            <button type="button" aria-label="Mở cài đặt" onClick={() => setIsSettingsOpen(true)} className="hidden h-9 w-9 items-center justify-center rounded-lg border border-slate-700 bg-slate-800/60 text-slate-300 transition hover:bg-slate-700 sm:flex max-[400px]:hidden">
               <Settings className="h-4 w-4" />
             </button>
             {isAuthenticated && user ? (
               <div className="relative">
-                <button type="button" aria-expanded={isUserMenuOpen} onClick={() => setIsUserMenuOpen((open) => !open)} className="flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-900/80 px-2.5 py-1.5">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-sky-500 to-indigo-600 text-[10px] font-bold text-white">{`${user.firstName[0] ?? ""}${user.lastName[0] ?? ""}`.toUpperCase()}</div>
-                  <span className="hidden max-w-32 truncate text-sm font-medium text-slate-100 sm:block">{`${user.firstName} ${user.lastName}`.trim()}</span>
-                  <ChevronDown className={`hidden h-4 w-4 text-slate-400 transition sm:block ${isUserMenuOpen ? "rotate-180" : ""}`} />
+                <button type="button" aria-expanded={isUserMenuOpen} onClick={() => setIsUserMenuOpen((open) => !open)} className="flex flex-shrink-0 items-center gap-2 whitespace-nowrap rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-bold text-slate-950 transition-all hover:bg-emerald-400">
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-950/20 text-[10px] font-bold text-slate-950">{`${user.firstName[0] ?? ""}${user.lastName[0] ?? ""}`.toUpperCase()}</div>
+                  <span className="hidden max-w-32 truncate text-sm font-medium text-slate-950 sm:block">{`${user.firstName} ${user.lastName}`.trim()}</span>
+                  <ChevronDown className={`h-3.5 w-3.5 text-slate-950 transition ${isUserMenuOpen ? "rotate-180" : ""}`} />
                 </button>
                 {isUserMenuOpen ? <div className="absolute right-0 top-full z-20 mt-2 w-52 rounded-xl border border-slate-700 bg-[#121721] p-1.5 shadow-2xl shadow-black/60"><button type="button" onClick={() => { setProfileTab("profile"); setIsProfileOpen(true); setIsUserMenuOpen(false); }} className="flex w-full items-center rounded-lg px-3 py-2.5 text-left text-sm text-slate-200 hover:bg-slate-800">Thông tin tài khoản</button><button type="button" onClick={() => { setProfileTab("password"); setIsProfileOpen(true); setIsUserMenuOpen(false); }} className="flex w-full items-center rounded-lg px-3 py-2.5 text-left text-sm text-slate-200 hover:bg-slate-800">Đổi mật khẩu</button><button type="button" onClick={() => { logout(); setIsUserMenuOpen(false); }} className="flex w-full items-center rounded-lg px-3 py-2.5 text-left text-sm text-rose-300 hover:bg-rose-500/10">Đăng xuất</button></div> : null}
               </div>
-            ) : <button type="button" onClick={() => setIsAuthOpen(true)} className="flex items-center gap-2 rounded-xl border border-cyan-500/40 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-200 transition hover:border-cyan-400"><UserRound className="h-4 w-4" />Đăng nhập</button>}
+            ) : <button type="button" onClick={() => setIsAuthOpen(true)} className="flex flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-bold text-slate-950 transition-all hover:bg-emerald-400"><UserRound className="h-4 w-4" /><span className="hidden sm:inline">Đăng nhập</span></button>}
           </div>
         </div>
       </header>

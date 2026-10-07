@@ -17,6 +17,14 @@ html, body, #root {
   box-sizing: border-box;
 }
 
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 body {
   min-height: 100vh;
   background:
