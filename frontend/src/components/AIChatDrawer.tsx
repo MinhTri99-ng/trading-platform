@@ -36,7 +36,7 @@ const GEMINI_KEYS = [
   .map((key) => key?.trim())
   .filter((key): key is string => Boolean(key));
 
-const GEMINI_MODELS = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"] as const;
+const CANDIDATE_MODELS = ["gemini-1.5-flash", "gemini-1.5-pro"] as const;
 
 interface AIChatDrawerProps {
   isOpen: boolean;
@@ -73,10 +73,11 @@ async function requestGeminiResponse(contents: Array<{ role: "user" | "model"; p
   for (let attempt = 0; attempt < GEMINI_KEYS.length; attempt += 1) {
     const apiKey = GEMINI_KEYS[(firstKeyIndex + attempt) % GEMINI_KEYS.length];
 
-    for (const model of GEMINI_MODELS) {
+    for (const modelName of CANDIDATE_MODELS) {
       try {
+        const cleanModel = modelName.replace(/^models\//, "");
         const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${encodeURIComponent(apiKey)}`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -114,6 +115,11 @@ async function requestGeminiResponse(contents: Array<{ role: "user" | "model"; p
         return assistantText;
       } catch (error) {
         lastError = error instanceof Error ? error : new Error("Không thể kết nối Gemini.");
+        console.error("Gemini request failed", {
+          apiKeyIndex: (firstKeyIndex + attempt) % GEMINI_KEYS.length + 1,
+          model: modelName,
+          error,
+        });
       }
     }
   }
