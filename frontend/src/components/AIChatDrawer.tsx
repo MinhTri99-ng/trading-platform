@@ -36,7 +36,7 @@ const GEMINI_KEYS = [
   .map((key) => key?.trim())
   .filter((key): key is string => Boolean(key));
 
-const GEMINI_MODEL = "gemini-1.5-flash";
+const GEMINI_MODELS = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"] as const;
 
 interface AIChatDrawerProps {
   isOpen: boolean;
@@ -73,46 +73,48 @@ async function requestGeminiResponse(contents: Array<{ role: "user" | "model"; p
   for (let attempt = 0; attempt < GEMINI_KEYS.length; attempt += 1) {
     const apiKey = GEMINI_KEYS[(firstKeyIndex + attempt) % GEMINI_KEYS.length];
 
-    try {
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
-            contents,
-            generationConfig: { temperature: 0.4, maxOutputTokens: 2048 },
-          }),
-        },
-      );
+    for (const model of GEMINI_MODELS) {
+      try {
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
+              contents,
+              generationConfig: { temperature: 0.4, maxOutputTokens: 2048 },
+            }),
+          },
+        );
 
-      const responseText = await response.text();
-      let payload: GeminiResponse = {};
-      if (responseText) {
-        try {
-          payload = JSON.parse(responseText) as GeminiResponse;
-        } catch {
-          throw new Error(`Gemini trả về dữ liệu không hợp lệ (HTTP ${response.status}).`);
+        const responseText = await response.text();
+        let payload: GeminiResponse = {};
+        if (responseText) {
+          try {
+            payload = JSON.parse(responseText) as GeminiResponse;
+          } catch {
+            throw new Error(`Gemini trả về dữ liệu không hợp lệ (HTTP ${response.status}).`);
+          }
         }
+
+        if (!response.ok) {
+          throw new Error(payload.error?.message || `Gemini chưa thể trả lời lúc này (HTTP ${response.status}).`);
+        }
+
+        const assistantText = payload.candidates?.[0]?.content?.parts
+          ?.map((part) => part.text ?? "")
+          .join("")
+          .trim();
+
+        if (!assistantText) {
+          throw new Error("Gemini trả về phản hồi rỗng.");
+        }
+
+        return assistantText;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error("Không thể kết nối Gemini.");
       }
-
-      if (!response.ok) {
-        throw new Error(payload.error?.message || `Gemini chưa thể trả lời lúc này (HTTP ${response.status}).`);
-      }
-
-      const assistantText = payload.candidates?.[0]?.content?.parts
-        ?.map((part) => part.text ?? "")
-        .join("")
-        .trim();
-
-      if (!assistantText) {
-        throw new Error("Gemini trả về phản hồi rỗng.");
-      }
-
-      return assistantText;
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error("Không thể kết nối Gemini.");
     }
   }
 
