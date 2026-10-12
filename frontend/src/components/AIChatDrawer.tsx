@@ -76,18 +76,16 @@ async function requestGeminiResponse(contents: Array<{ role: "user" | "model"; p
     for (const modelName of CANDIDATE_MODELS) {
       try {
         const cleanModel = modelName.replace(/^models\//, "");
-        const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${encodeURIComponent(apiKey)}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
-              contents,
-              generationConfig: { temperature: 0.4, maxOutputTokens: 2048 },
-            }),
-          },
-        );
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${encodeURIComponent(apiKey)}`;
+        const response = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
+            contents,
+            generationConfig: { temperature: 0.4, maxOutputTokens: 2048 },
+          }),
+        });
 
         const responseText = await response.text();
         let payload: GeminiResponse = {};
