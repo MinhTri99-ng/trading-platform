@@ -21,6 +21,23 @@ type GeminiResponse = {
   };
 };
 
+const GEMINI_KEYS = [
+  import.meta.env.VITE_GEMINI_KEY_1,
+  import.meta.env.VITE_GEMINI_KEY_2,
+  import.meta.env.VITE_GEMINI_KEY_3,
+  import.meta.env.VITE_GEMINI_KEY_4,
+  import.meta.env.VITE_GEMINI_KEY_5,
+  import.meta.env.VITE_GEMINI_KEY_6,
+  import.meta.env.VITE_GEMINI_KEY_7,
+  import.meta.env.VITE_GEMINI_KEY_8,
+  import.meta.env.VITE_GEMINI_KEY_9,
+  import.meta.env.VITE_GEMINI_KEY_10,
+]
+  .map((key) => key?.trim())
+  .filter((key): key is string => Boolean(key));
+
+const GEMINI_MODEL = "gemini-1.5-flash";
+
 interface AIChatDrawerProps {
   isOpen: boolean;
   onClose: () => void;
@@ -44,6 +61,63 @@ const WELCOME_MESSAGE: ChatMessage = {
 };
 
 const createMessageId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+async function requestGeminiResponse(contents: Array<{ role: "user" | "model"; parts: Array<{ text: string }> }>) {
+  if (GEMINI_KEYS.length === 0) {
+    throw new Error("Thiếu GEMINI_KEY_1 đến GEMINI_KEY_10 trong file .env.local.");
+  }
+
+  const firstKeyIndex = Math.floor(Math.random() * GEMINI_KEYS.length);
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt < GEMINI_KEYS.length; attempt += 1) {
+    const apiKey = GEMINI_KEYS[(firstKeyIndex + attempt) % GEMINI_KEYS.length];
+
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
+            contents,
+            generationConfig: { temperature: 0.4, maxOutputTokens: 2048 },
+          }),
+        },
+      );
+
+      const responseText = await response.text();
+      let payload: GeminiResponse = {};
+      if (responseText) {
+        try {
+          payload = JSON.parse(responseText) as GeminiResponse;
+        } catch {
+          throw new Error(`Gemini trả về dữ liệu không hợp lệ (HTTP ${response.status}).`);
+        }
+      }
+
+      if (!response.ok) {
+        throw new Error(payload.error?.message || `Gemini chưa thể trả lời lúc này (HTTP ${response.status}).`);
+      }
+
+      const assistantText = payload.candidates?.[0]?.content?.parts
+        ?.map((part) => part.text ?? "")
+        .join("")
+        .trim();
+
+      if (!assistantText) {
+        throw new Error("Gemini trả về phản hồi rỗng.");
+      }
+
+      return assistantText;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error("Không thể kết nối Gemini.");
+    }
+  }
+
+  throw new Error(lastError?.message || "Tất cả Gemini API key đều không khả dụng.");
+}
 
 export function AIChatDrawer({ isOpen, onClose }: AIChatDrawerProps) {
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([WELCOME_MESSAGE]);
@@ -81,44 +155,15 @@ export function AIChatDrawer({ isOpen, onClose }: AIChatDrawerProps) {
     setIsLoading(true);
 
     try {
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY?.trim();
-      if (!apiKey) {
-        throw new Error("Thiếu VITE_GEMINI_API_KEY trong file .env.local.");
-      }
-
       // Luồng: User gõ -> lưu chatHistory -> gọi Gemini -> nhận response -> cập nhật UI.
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${encodeURIComponent(apiKey)}`,
-        
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
-            contents: nextHistory
-              .filter((chatMessage) => chatMessage.id !== "welcome")
-              .map((chatMessage) => ({
-                role: chatMessage.role === "assistant" ? "model" : "user",
-                parts: [{ text: chatMessage.content }],
-              })),
-            generationConfig: { temperature: 0.4, maxOutputTokens: 2048 },
-          }),
-        },
+      const assistantText = await requestGeminiResponse(
+        nextHistory
+          .filter((chatMessage) => chatMessage.id !== "welcome")
+          .map((chatMessage) => ({
+            role: chatMessage.role === "assistant" ? "model" as const : "user" as const,
+            parts: [{ text: chatMessage.content }],
+          })),
       );
-
-      const payload = (await response.json()) as GeminiResponse;
-      if (!response.ok) {
-        throw new Error(payload.error?.message || "Gemini chưa thể trả lời lúc này.");
-      }
-
-      const assistantText = payload.candidates?.[0]?.content?.parts
-        ?.map((part) => part.text ?? "")
-        .join("")
-        .trim();
-
-      if (!assistantText) {
-        throw new Error("Gemini trả về phản hồi rỗng.");
-      }
 
       setChatHistory((currentHistory) => [
         ...currentHistory,
