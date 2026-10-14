@@ -26,7 +26,12 @@ const GEMINI_KEYS = [
   .map((key) => key?.trim())
   .filter((key): key is string => Boolean(key));
 
-const CANDIDATE_MODELS = ["gemini-1.5-flash", "gemini-1.5-pro"] as const;
+const CANDIDATE_MODELS = [
+  "gemini-1.5-flash",
+  "gemini-1.5-flash-latest",
+  "gemini-2.0-flash",
+  "gemini-1.5-pro-latest",
+] as const;
 
 interface AIChatDrawerProps {
   isOpen: boolean;
@@ -58,7 +63,6 @@ async function requestGeminiResponse(contents: Array<{ role: "user" | "model"; p
   }
 
   const firstKeyIndex = Math.floor(Math.random() * GEMINI_KEYS.length);
-  let lastError: Error | null = null;
 
   for (let attempt = 0; attempt < GEMINI_KEYS.length; attempt += 1) {
     const currentKey = GEMINI_KEYS[(firstKeyIndex + attempt) % GEMINI_KEYS.length];
@@ -81,7 +85,6 @@ async function requestGeminiResponse(contents: Array<{ role: "user" | "model"; p
 
         return assistantText;
       } catch (error) {
-        lastError = error instanceof Error ? error : new Error("Không thể kết nối Gemini.");
         console.error("Gemini request failed", {
           apiKeyIndex: (firstKeyIndex + attempt) % GEMINI_KEYS.length + 1,
           model: modelName,
@@ -91,7 +94,7 @@ async function requestGeminiResponse(contents: Array<{ role: "user" | "model"; p
     }
   }
 
-  throw new Error(lastError?.message || "Tất cả Gemini API key đều không khả dụng.");
+  throw new Error("Hệ thống AI đang bảo trì hoặc đạt giới hạn lưu lượng, vui lòng thử lại sau ít phút.");
 }
 
 export function AIChatDrawer({ isOpen, onClose }: AIChatDrawerProps) {
