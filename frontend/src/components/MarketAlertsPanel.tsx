@@ -116,7 +116,7 @@ export function MarketAlertsPanel({ signal, selectedSymbol, marketStructure }: M
     if (news.length < 2) return;
     const autoplayTimer = window.setInterval(() => {
       setActiveNewsIndex((currentIndex) => (currentIndex + 1) % news.length);
-    }, 6000);
+    }, 5000);
     return () => window.clearInterval(autoplayTimer);
   }, [news.length]);
 
@@ -237,7 +237,7 @@ export function MarketAlertsPanel({ signal, selectedSymbol, marketStructure }: M
                 </span>
               </div>
               <div className="p-3">
-                <p className="line-clamp-3 min-h-[60px] text-sm font-bold leading-5 text-slate-100 transition-colors group-hover:text-cyan-100">{news[activeNewsIndex].title}</p>
+                <p className="line-clamp-2 min-h-[40px] text-sm font-bold leading-5 text-slate-100 transition-colors group-hover:text-cyan-100">{news[activeNewsIndex].title}</p>
                 <div className="mt-2 flex items-center gap-2 text-[10px] text-slate-500">
                   <span>{formatNewsAge(news[activeNewsIndex].publishedAt)}</span>
                   <span>•</span>

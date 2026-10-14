@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { Bot, LoaderCircle, Send, Sparkles, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
@@ -8,17 +9,6 @@ type ChatMessage = {
   id: string;
   role: ChatRole;
   content: string;
-};
-
-type GeminiResponse = {
-  candidates?: Array<{
-    content?: {
-      parts?: Array<{ text?: string }>;
-    };
-  }>;
-  error?: {
-    message?: string;
-  };
 };
 
 const GEMINI_KEYS = [
@@ -71,41 +61,20 @@ async function requestGeminiResponse(contents: Array<{ role: "user" | "model"; p
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt < GEMINI_KEYS.length; attempt += 1) {
-    const apiKey = GEMINI_KEYS[(firstKeyIndex + attempt) % GEMINI_KEYS.length];
+    const currentKey = GEMINI_KEYS[(firstKeyIndex + attempt) % GEMINI_KEYS.length];
 
     for (const modelName of CANDIDATE_MODELS) {
       try {
-        const cleanModel = modelName.replace(/^models\//, "");
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${encodeURIComponent(apiKey)}`;
-        const response = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
-            contents,
-            generationConfig: { temperature: 0.4, maxOutputTokens: 2048 },
-          }),
+        const genAI = new GoogleGenerativeAI(currentKey);
+        const model = genAI.getGenerativeModel({
+          model: modelName,
+          systemInstruction: SYSTEM_INSTRUCTION,
         });
-
-        const responseText = await response.text();
-        let payload: GeminiResponse = {};
-        if (responseText) {
-          try {
-            payload = JSON.parse(responseText) as GeminiResponse;
-          } catch {
-            throw new Error(`Gemini trả về dữ liệu không hợp lệ (HTTP ${response.status}).`);
-          }
-        }
-
-        if (!response.ok) {
-          throw new Error(payload.error?.message || `Gemini chưa thể trả lời lúc này (HTTP ${response.status}).`);
-        }
-
-        const assistantText = payload.candidates?.[0]?.content?.parts
-          ?.map((part) => part.text ?? "")
-          .join("")
-          .trim();
-
+        const result = await model.generateContent({
+          contents,
+          generationConfig: { temperature: 0.4, maxOutputTokens: 2048 },
+        });
+        const assistantText = result.response.text().trim();
         if (!assistantText) {
           throw new Error("Gemini trả về phản hồi rỗng.");
         }
