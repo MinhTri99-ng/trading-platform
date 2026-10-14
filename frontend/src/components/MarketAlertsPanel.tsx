@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { ArrowUpRight, ExternalLink, Newspaper, RefreshCw, ShieldAlert, TrendingDown, TrendingUp } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, ArrowRight, ArrowUpRight, ExternalLink, Newspaper, RefreshCw, ShieldAlert, TrendingDown, TrendingUp } from "lucide-react";
 import type { MarketSignal } from "../hooks/useMarketRealtime";
 import type { MarketStructureData } from "../hooks/useMarketStructure";
 
@@ -77,6 +77,8 @@ export function MarketAlertsPanel({ signal, selectedSymbol, marketStructure }: M
   const [news, setNews] = useState<NewsItem[]>(fallbackNews);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [usingLiveNews, setUsingLiveNews] = useState(false);
+  const [activeNewsIndex, setActiveNewsIndex] = useState(0);
+  const newsTouchStartX = useRef<number | null>(null);
 
   const loadNews = async (isCancelled: () => boolean) => {
     setIsRefreshing(true);
@@ -89,6 +91,7 @@ export function MarketAlertsPanel({ signal, selectedSymbol, marketStructure }: M
       const liveNews = (payload.Data ?? []).map(normalizeNews).filter((item): item is NewsItem => item !== null).slice(0, 5);
       if (!isCancelled() && liveNews.length > 0) {
         setNews(liveNews);
+        setActiveNewsIndex(0);
         setUsingLiveNews(true);
       }
     } catch {
@@ -108,6 +111,30 @@ export function MarketAlertsPanel({ signal, selectedSymbol, marketStructure }: M
       window.clearInterval(refreshTimer);
     };
   }, []);
+
+  useEffect(() => {
+    if (news.length < 2) return;
+    const autoplayTimer = window.setInterval(() => {
+      setActiveNewsIndex((currentIndex) => (currentIndex + 1) % news.length);
+    }, 6000);
+    return () => window.clearInterval(autoplayTimer);
+  }, [news.length]);
+
+  const changeNews = (direction: 1 | -1) => {
+    setActiveNewsIndex((currentIndex) => (currentIndex + direction + news.length) % news.length);
+  };
+
+  const handleNewsPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    newsTouchStartX.current = event.clientX;
+  };
+
+  const handleNewsPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (newsTouchStartX.current === null) return;
+    const distance = event.clientX - newsTouchStartX.current;
+    newsTouchStartX.current = null;
+    if (Math.abs(distance) < 40) return;
+    changeNews(distance < 0 ? 1 : -1);
+  };
 
   const technicalAlerts = useMemo(() => {
     const direction = signal?.direction;
@@ -169,21 +196,71 @@ export function MarketAlertsPanel({ signal, selectedSymbol, marketStructure }: M
             <RefreshCw className="h-3.5 w-3.5" />
           </button>
         </div>
-        <div className="space-y-2.5">
-          {news.map((item) => (
-            <a key={item.id} href={item.sourceUrl} target="_blank" rel="noreferrer" className="group flex gap-3 rounded-xl border border-slate-800 bg-slate-950/45 p-2 transition-all duration-300 hover:border-cyan-400/35 hover:bg-gradient-to-r hover:from-cyan-500/10 hover:to-violet-500/10">
-              <img src={item.imageUrl} alt="" loading="lazy" className="h-[58px] w-[88px] shrink-0 rounded-lg object-cover opacity-90 transition duration-300 group-hover:scale-[1.03] group-hover:opacity-100" />
-              <div className="min-w-0 flex-1">
-                <p className="line-clamp-2 text-xs font-semibold leading-5 text-slate-100 transition-colors group-hover:text-cyan-100">{item.title}</p>
-                <div className="mt-1.5 flex items-center gap-2 text-[10px] text-slate-500">
-                  <span className="font-semibold text-cyan-300/80">{item.source}</span>
+        <div
+          className="group/carousel relative touch-pan-y select-none"
+          onPointerDown={handleNewsPointerDown}
+          onPointerUp={handleNewsPointerUp}
+          onPointerCancel={() => { newsTouchStartX.current = null; }}
+        >
+          {news.length > 1 && (
+            <>
+              <button
+                type="button"
+                onClick={() => changeNews(-1)}
+                aria-label="Tin trước"
+                className="absolute left-2 top-[38%] z-10 rounded-full border border-slate-700/80 bg-slate-950/85 p-2 text-slate-200 opacity-0 shadow-lg backdrop-blur-sm transition-all hover:border-cyan-400/50 hover:text-cyan-200 group-hover/carousel:opacity-100"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => changeNews(1)}
+                aria-label="Tin tiếp theo"
+                className="absolute right-2 top-[38%] z-10 rounded-full border border-slate-700/80 bg-slate-950/85 p-2 text-slate-200 opacity-0 shadow-lg backdrop-blur-sm transition-all hover:border-cyan-400/50 hover:text-cyan-200 group-hover/carousel:opacity-100"
+              >
+                <ArrowRight className="h-3.5 w-3.5" />
+              </button>
+            </>
+          )}
+          {news[activeNewsIndex] && (
+            <a
+              href={news[activeNewsIndex].sourceUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="group block overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/45 transition-all duration-300 hover:border-cyan-400/35 hover:bg-gradient-to-br hover:from-cyan-500/10 hover:to-violet-500/10"
+            >
+              <div className="relative aspect-[16/9] overflow-hidden">
+                <img src={news[activeNewsIndex].imageUrl} alt="" loading="lazy" className="h-full w-full object-cover opacity-90 transition duration-500 group-hover:scale-105 group-hover:opacity-100" />
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent" />
+                <span className="absolute bottom-3 left-3 rounded-full border border-cyan-300/25 bg-slate-950/70 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-cyan-200 backdrop-blur-sm">
+                  {news[activeNewsIndex].source}
+                </span>
+              </div>
+              <div className="p-3">
+                <p className="line-clamp-3 min-h-[60px] text-sm font-bold leading-5 text-slate-100 transition-colors group-hover:text-cyan-100">{news[activeNewsIndex].title}</p>
+                <div className="mt-2 flex items-center gap-2 text-[10px] text-slate-500">
+                  <span>{formatNewsAge(news[activeNewsIndex].publishedAt)}</span>
                   <span>•</span>
-                  <span>{formatNewsAge(item.publishedAt)}</span>
-                  <ArrowUpRight className="ml-auto h-3 w-3 opacity-0 transition group-hover:opacity-100" />
+                  <span>Đọc bài gốc</span>
+                  <ArrowUpRight className="ml-auto h-3.5 w-3.5 text-cyan-300 opacity-70 transition group-hover:opacity-100" />
                 </div>
               </div>
             </a>
-          ))}
+          )}
+          {news.length > 1 && (
+            <div className="mt-3 flex items-center justify-center gap-1.5" aria-label="Chọn tin tức">
+              {news.map((item, index) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setActiveNewsIndex(index)}
+                  aria-label={`Chuyển đến tin ${index + 1}`}
+                  aria-current={activeNewsIndex === index}
+                  className={`h-1.5 rounded-full transition-all duration-300 ${activeNewsIndex === index ? "w-5 bg-cyan-300 shadow-[0_0_8px_rgba(103,232,249,0.55)]" : "w-1.5 bg-slate-600 hover:bg-slate-400"}`}
+                />
+              ))}
+            </div>
+          )}
         </div>
         <div className="mt-3 flex items-center justify-end gap-1 text-[9px] uppercase tracking-[0.14em] text-slate-600">
           {usingLiveNews ? "CryptoCompare • cập nhật 5 phút" : "Nguồn dự phòng • tin tức mẫu"}
