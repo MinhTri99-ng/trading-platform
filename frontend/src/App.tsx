@@ -18,6 +18,7 @@ import { SearchModal } from "./components/SearchModal";
 import { AuthModal } from "./components/AuthModal";
 import { UserProfileModal } from "./components/UserProfileModal";
 import { MarketStructure } from "./components/MarketStructure";
+import { MarketAlertsPanel } from "./components/MarketAlertsPanel";
 import { AdBanner } from "./components/AdBanner";
 import { Watchlist } from "./components/Watchlist";
 import { useAuth } from "./context/AuthContext";
@@ -907,21 +908,7 @@ function App() {
                 )}
               </div>
 
-              <div className="rounded-[22px] border border-slate-800 bg-[#121721] p-4">
-                <div className="mb-4 flex items-center justify-between">
-                  <h3 className="text-[11px] uppercase tracking-[0.2em] text-slate-400">{t("dashboard.alerts")}</h3>
-                  <span className="rounded-full bg-rose-500/15 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-rose-300">{t("dashboard.critical")}</span>
-                </div>
-
-                <ul className="space-y-2 text-sm text-slate-300">
-                  <li className="rounded-xl border border-slate-800 bg-slate-950/60 p-2.5">
-                    <span className="font-medium text-slate-100">BTC/USDT</span> phá vỡ vùng kháng cự $67.200 trên khối lượng cao.
-                  </li>
-                  <li className="rounded-xl border border-slate-800 bg-slate-950/60 p-2.5">
-                    ETH vẫn giữ nhịp tăng khi dòng lệnh vẫn cân bằng.
-                  </li>
-                </ul>
-              </div>
+              <MarketAlertsPanel signal={activeSignal} selectedSymbol={selectedSymbol} marketStructure={marketStructure} />
             </div>
           </div>
 
