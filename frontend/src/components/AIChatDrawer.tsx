@@ -51,8 +51,8 @@ const WELCOME_MESSAGE: ChatMessage = {
 
 const createMessageId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-const callGeminiApi = async (apiKey: string, rawModelName: string, userPrompt: string) => {
-  const cleanModel = rawModelName.replace(/^models\//, "").trim();
+const callGeminiApi = async (apiKey: string, modelName: string, userPrompt: string) => {
+  const cleanModel = modelName.replace(/^models\//, "").replace(/^\//, "").trim();
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent`;
   const response = await fetch(url, {
     method: "POST",
