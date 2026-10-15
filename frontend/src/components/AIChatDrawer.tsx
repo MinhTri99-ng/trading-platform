@@ -27,9 +27,8 @@ const GEMINI_KEYS = [
 
 const CANDIDATE_MODELS = [
   "gemini-2.0-flash",
-  "gemini-1.5-flash-latest",
-  "gemini-1.5-pro-latest",
-  "gemini-1.5-flash-8b",
+  "gemini-1.5-flash",
+  "gemini-1.5-pro",
 ] as const;
 
 interface AIChatDrawerProps {
@@ -57,7 +56,7 @@ const WELCOME_MESSAGE: ChatMessage = {
 const createMessageId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 const callGeminiApi = async (apiKey: string, rawModelName: string, userPrompt: string) => {
-  const cleanModel = rawModelName.replace(/^models\//, "").trim();
+  const cleanModel = rawModelName.replace(/models\//g, "").replace(/^\//, "").trim();
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent`;
   const response = await fetch(url, {
     method: "POST",
