@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { Bot, LoaderCircle, Send, Sparkles, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
@@ -26,12 +25,7 @@ const GEMINI_KEYS = [
   .map((key) => key?.trim())
   .filter((key): key is string => Boolean(key));
 
-const CANDIDATE_MODELS = [
-  "gemini-1.5-flash",
-  "gemini-1.5-flash-latest",
-  "gemini-2.0-flash",
-  "gemini-1.5-pro-latest",
-] as const;
+const CANDIDATE_MODELS = ["gemini-1.5-flash", "gemini-1.5-pro"] as const;
 
 interface AIChatDrawerProps {
   isOpen: boolean;
@@ -57,36 +51,52 @@ const WELCOME_MESSAGE: ChatMessage = {
 
 const createMessageId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
+const callGeminiApi = async (apiKey: string, rawModelName: string, userPrompt: string) => {
+  const cleanModel = rawModelName.replace(/^models\//, "").trim();
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-goog-api-key": apiKey,
+    },
+    body: JSON.stringify({
+      contents: [
+        {
+          parts: [{ text: userPrompt }],
+        },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json() as { error?: { message?: string } };
+    throw new Error(errorData.error?.message || `HTTP ${response.status}`);
+  }
+
+  const data = await response.json() as {
+    candidates: Array<{ content: { parts: Array<{ text: string }> } }>;
+  };
+  return data.candidates[0].content.parts[0].text;
+};
+
 async function requestGeminiResponse(contents: Array<{ role: "user" | "model"; parts: Array<{ text: string }> }>) {
   if (GEMINI_KEYS.length === 0) {
     throw new Error("Thiếu GEMINI_KEY_1 đến GEMINI_KEY_10 trong file .env.local.");
   }
 
-  const firstKeyIndex = Math.floor(Math.random() * GEMINI_KEYS.length);
+  const userPrompt = [
+    `System instruction: ${SYSTEM_INSTRUCTION}`,
+    ...contents.map((content) => `${content.role}: ${content.parts.map((part) => part.text).join("")}`),
+  ].join("\n\n");
 
-  for (let attempt = 0; attempt < GEMINI_KEYS.length; attempt += 1) {
-    const currentKey = GEMINI_KEYS[(firstKeyIndex + attempt) % GEMINI_KEYS.length];
-
+  for (const [keyIndex, currentKey] of GEMINI_KEYS.entries()) {
     for (const modelName of CANDIDATE_MODELS) {
       try {
-        const genAI = new GoogleGenerativeAI(currentKey);
-        const model = genAI.getGenerativeModel({
-          model: modelName,
-          systemInstruction: SYSTEM_INSTRUCTION,
-        });
-        const result = await model.generateContent({
-          contents,
-          generationConfig: { temperature: 0.4, maxOutputTokens: 2048 },
-        });
-        const assistantText = result.response.text().trim();
-        if (!assistantText) {
-          throw new Error("Gemini trả về phản hồi rỗng.");
-        }
-
-        return assistantText;
+        return await callGeminiApi(currentKey, modelName, userPrompt);
       } catch (error) {
-        console.error("Gemini request failed", {
-          apiKeyIndex: (firstKeyIndex + attempt) % GEMINI_KEYS.length + 1,
+        console.warn("Gemini request failed; trying next candidate", {
+          apiKeyIndex: keyIndex + 1,
           model: modelName,
           error,
         });
@@ -96,7 +106,6 @@ async function requestGeminiResponse(contents: Array<{ role: "user" | "model"; p
 
   throw new Error("Hệ thống AI đang bảo trì hoặc đạt giới hạn lưu lượng, vui lòng thử lại sau ít phút.");
 }
-
 export function AIChatDrawer({ isOpen, onClose }: AIChatDrawerProps) {
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([WELCOME_MESSAGE]);
   const [inputValue, setInputValue] = useState("");
