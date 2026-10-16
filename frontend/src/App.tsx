@@ -32,8 +32,7 @@ type Timeframe = "1m" | "5m" | "15m" | "30m" | "1H" | "4H" | "1D" | "1W";
 type MarketCard = {
   pair: string;
   price: number;
-  change: number;
-  sentiment: "Bullish LONG" | "Neutral WATCH";
+  priceChangePercent: number;
   spark: number[];
 };
 
@@ -50,11 +49,36 @@ const languageOptions = [
 const quickSymbols = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "BNB/USDT"];
 
 const marketCards: MarketCard[] = [
-  { pair: "BTC/USDT", price: 67340, change: 2.84, sentiment: "Bullish LONG", spark: [65, 66, 67, 66.8, 67.2, 67.7, 68.3, 68.7, 68.2, 68.9] },
-  { pair: "ETH/USDT", price: 3524.12, change: 1.76, sentiment: "Bullish LONG", spark: [34.2, 34.8, 34.6, 35.1, 35.7, 35.5, 35.2, 35.9, 36.4, 36.8] },
-  { pair: "SOL/USDT", price: 168.45, change: 3.34, sentiment: "Bullish LONG", spark: [154, 156, 161, 157, 162, 164, 167, 168, 170, 169] },
-  { pair: "XRP/USDT", price: 0.6221, change: -0.42, sentiment: "Neutral WATCH", spark: [0.61, 0.62, 0.618, 0.614, 0.619, 0.621, 0.620, 0.618, 0.615, 0.617] },
+  { pair: "BTC/USDT", price: 67340, priceChangePercent: 2.84, spark: [65, 66, 67, 66.8, 67.2, 67.7, 68.3, 68.7, 68.2, 68.9] },
+  { pair: "ETH/USDT", price: 3524.12, priceChangePercent: 1.76, spark: [34.2, 34.8, 34.6, 35.1, 35.7, 35.5, 35.2, 35.9, 36.4, 36.8] },
+  { pair: "SOL/USDT", price: 168.45, priceChangePercent: 3.34, spark: [154, 156, 161, 157, 162, 164, 167, 168, 170, 169] },
+  { pair: "XRP/USDT", price: 0.6221, priceChangePercent: -0.42, spark: [0.61, 0.62, 0.618, 0.614, 0.619, 0.621, 0.620, 0.618, 0.615, 0.617] },
 ];
+
+const getSignalData = (change: number) => {
+  if (change >= 1.5) {
+    return {
+      label: "BULLISH LONG",
+      badgeBg: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+      barBg: "bg-emerald-500",
+      activeBars: Math.min(10, Math.max(6, Math.round(5 + change))),
+    };
+  }
+  if (change <= -1.5) {
+    return {
+      label: "BEARISH SHORT",
+      badgeBg: "bg-rose-500/10 text-rose-400 border-rose-500/20",
+      barBg: "bg-rose-500",
+      activeBars: Math.min(10, Math.max(6, Math.round(5 + Math.abs(change)))),
+    };
+  }
+  return {
+    label: "NEUTRAL WATCH",
+    badgeBg: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+    barBg: "bg-amber-500",
+    activeBars: 5,
+  };
+};
 
 type ScreenshotStatus = "idle" | "uploading" | "extracting" | "verifying" | "completed" | "invalid";
 
@@ -727,34 +751,38 @@ function App() {
 
           <div className="min-w-0 flex-1">
             <div className="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              {marketCards.map((card) => (
-                <div key={card.pair} className="rounded-[20px] border border-slate-800 bg-[#121721] p-3.5">
+              {marketCards.map((card) => {
+                const signal = getSignalData(card.priceChangePercent);
+
+                return (
+                  <div key={card.pair} className="rounded-[20px] border border-slate-800 bg-[#121721] p-3.5">
                   <div className="mb-3 flex items-start justify-between gap-2">
                     <div>
                       <p className="text-sm font-semibold text-slate-100">{card.pair}</p>
                       <p className="mt-1 text-lg font-bold text-white">{formatMoney(card.price, displayCurrency)}</p>
                     </div>
-                    <StatBadge tone={card.change >= 0 ? "positive" : "negative"}>{card.change >= 0 ? "+" : ""}{card.change.toFixed(2)}%</StatBadge>
+                    <StatBadge tone={card.priceChangePercent >= 0 ? "positive" : "negative"}>{card.priceChangePercent >= 0 ? "+" : ""}{card.priceChangePercent.toFixed(2)}%</StatBadge>
                   </div>
 
                   <div className="mb-3 flex h-8 items-end gap-[2px]">
-                    {card.spark.map((point, idx) => (
+                    {Array.from({ length: 10 }, (_, idx) => (
                       <span
                         key={`${card.pair}-${idx}`}
-                        className={`w-full rounded-sm ${card.change >= 0 ? "bg-emerald-400/80" : "bg-rose-400/80"}`}
-                        style={{ height: `${Math.max(18, point / 3.5)}%` }}
+                        className={`w-full rounded-sm ${idx < signal.activeBars ? signal.barBg : "bg-slate-800"}`}
+                        style={{ height: `${Math.max(18, (card.spark[idx] ?? card.spark[card.spark.length - 1]) / 3.5)}%` }}
                       />
                     ))}
                   </div>
 
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[11px] text-slate-400">24h</span>
-                    <span className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${card.sentiment === "Bullish LONG" ? "bg-emerald-500/15 text-emerald-300" : "bg-amber-500/15 text-amber-300"}`}>
-                      {card.sentiment}
+                    <span className={`rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${signal.badgeBg}`}>
+                      {signal.label}
                     </span>
                   </div>
-                </div>
-              ))}
+                  </div>
+                );
+              })}
             </div>
 
             <div className="rounded-[24px] border border-slate-800 bg-[#121721] p-3 sm:p-4">
