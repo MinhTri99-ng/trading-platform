@@ -173,6 +173,66 @@
     border: 5px solid transparent;
   }
 
+  @keyframes price-flash-up {
+    0% {
+      color: inherit;
+      filter: brightness(1);
+    }
+    45% {
+      color: #34d399;
+      filter: brightness(1.35);
+    }
+    100% {
+      color: inherit;
+      filter: brightness(1);
+    }
+  }
+
+  @keyframes price-flash-down {
+    0% {
+      color: inherit;
+      filter: brightness(1);
+    }
+    45% {
+      color: #fb7185;
+      filter: brightness(1.35);
+    }
+    100% {
+      color: inherit;
+      filter: brightness(1);
+    }
+  }
+
+  .price-flash-up {
+    animation: price-flash-up 700ms ease-out;
+  }
+
+  .price-flash-down {
+    animation: price-flash-down 700ms ease-out;
+  }
+
+  .meter-bar-live {
+    animation: meter-bar-pulse 700ms ease-out;
+  }
+
+  @keyframes meter-bar-pulse {
+    0% {
+      opacity: 0.65;
+      transform: scaleY(0.82);
+      transform-origin: bottom;
+    }
+    55% {
+      opacity: 1;
+      transform: scaleY(1.08);
+      transform-origin: bottom;
+    }
+    100% {
+      opacity: 1;
+      transform: scaleY(1);
+      transform-origin: bottom;
+    }
+  }
+
   &::before {
     left: 0;
     border-left-color: var(--border);

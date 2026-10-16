@@ -36,6 +36,8 @@ type MarketCard = {
   spark: number[];
 };
 
+type PriceFlash = "up" | "down";
+
 const timeframes = ["1m", "5m", "15m", "30m", "1H", "4H", "1D", "1W"] as const;
 
 const languageOptions = [
@@ -192,6 +194,92 @@ function App() {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [profileTab, setProfileTab] = useState<"profile" | "password">("profile");
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [marketData, setMarketData] = useState<MarketCard[]>(marketCards);
+  const [priceFlashes, setPriceFlashes] = useState<Record<string, PriceFlash>>({});
+  const [meterPulse, setMeterPulse] = useState<Record<string, number>>({});
+  const marketDataRef = useRef(marketCards);
+  const flashTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  useEffect(() => {
+    const trackedPairs = new Set(marketCards.map((card) => card.pair.replace("/", "")));
+    const ws = new WebSocket("wss://stream.binance.com:9443/ws/!miniTicker@arr");
+
+    ws.onmessage = (event) => {
+      try {
+        const tickers = JSON.parse(event.data) as Array<{
+          s?: string;
+          c?: string;
+          o?: string;
+        }>;
+
+        if (!Array.isArray(tickers)) {
+          return;
+        }
+
+        const liveTickers = tickers.filter((ticker) => {
+          const symbol = ticker.s?.toUpperCase();
+          return Boolean(symbol && trackedPairs.has(symbol));
+        });
+
+        if (liveTickers.length === 0) {
+          return;
+        }
+
+        const next = marketDataRef.current.map((card) => {
+          const symbol = card.pair.replace("/", "");
+          const ticker = liveTickers.find((item) => item.s?.toUpperCase() === symbol);
+          const price = Number(ticker?.c);
+          const openPrice = Number(ticker?.o);
+
+          if (!ticker || !Number.isFinite(price) || !Number.isFinite(openPrice) || openPrice <= 0 || price <= 0) {
+            return card;
+          }
+
+          const priceChangePercent = ((price - openPrice) / openPrice) * 100;
+          if (price === card.price) {
+            return { ...card, priceChangePercent };
+          }
+
+          const priceDirection: PriceFlash = price > card.price ? "up" : "down";
+          const latestSparkValue = card.spark[card.spark.length - 1] ?? 1;
+          const spark = [...card.spark.slice(1), latestSparkValue * (price / card.price)];
+
+          setPriceFlashes((current) => ({ ...current, [card.pair]: priceDirection }));
+          setMeterPulse((current) => ({ ...current, [card.pair]: (current[card.pair] ?? 0) + 1 }));
+
+          const existingTimeout = flashTimeoutsRef.current[card.pair];
+          if (existingTimeout) {
+            clearTimeout(existingTimeout);
+          }
+          flashTimeoutsRef.current[card.pair] = setTimeout(() => {
+            setPriceFlashes((current) => {
+              const nextFlashes = { ...current };
+              delete nextFlashes[card.pair];
+              return nextFlashes;
+            });
+            delete flashTimeoutsRef.current[card.pair];
+          }, 700);
+
+          return { ...card, price, priceChangePercent, spark };
+        });
+
+        marketDataRef.current = next;
+        setMarketData(next);
+      } catch (error) {
+        console.error("[BINANCE WEBSOCKET] Failed to parse mini ticker event", error);
+      }
+    };
+
+    ws.onerror = (error) => {
+      console.error("[BINANCE WEBSOCKET] Connection error", error);
+    };
+
+    return () => {
+      ws.close();
+      Object.values(flashTimeoutsRef.current).forEach((timeout) => clearTimeout(timeout));
+      flashTimeoutsRef.current = {};
+    };
+  }, []);
 
   const historyPreview = tradeHistory.slice(0, 5);
   const closedSignals = tradeHistory.filter((entry) => entry.status !== "RUNNING");
@@ -204,12 +292,10 @@ function App() {
   const currencySymbol = displayCurrency === "VND" ? "₫" : "$";
 
   const symbolPrice = useMemo(() => {
-    if (selectedSymbol === "BTC/USDT") return 67340.25;
-    if (selectedSymbol === "ETH/USDT") return 3524.12;
-    if (selectedSymbol === "SOL/USDT") return 168.45;
-    if (selectedSymbol === "XRP/USDT") return 0.6221;
+    const liveCard = marketData.find((card) => card.pair === selectedSymbol);
+    if (liveCard) return liveCard.price;
     return 598.34;
-  }, [selectedSymbol]);
+  }, [marketData, selectedSymbol]);
 
   const normalizePairForDisplay = (value?: string) => {
     if (!value) return "BTC/USDT";
@@ -751,24 +837,27 @@ function App() {
 
           <div className="min-w-0 flex-1">
             <div className="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              {marketCards.map((card) => {
+              {marketData.map((card) => {
                 const signal = getSignalData(card.priceChangePercent);
+                const priceFlash = priceFlashes[card.pair];
 
                 return (
                   <div key={card.pair} className="rounded-[20px] border border-slate-800 bg-[#121721] p-3.5">
                   <div className="mb-3 flex items-start justify-between gap-2">
                     <div>
                       <p className="text-sm font-semibold text-slate-100">{card.pair}</p>
-                      <p className="mt-1 text-lg font-bold text-white">{formatMoney(card.price, displayCurrency)}</p>
+                      <p key={`${card.pair}-${meterPulse[card.pair] ?? 0}`} className={`mt-1 text-lg font-bold text-white ${priceFlash ? `price-flash-${priceFlash}` : ""}`}>{formatMoney(card.price, displayCurrency)}</p>
                     </div>
-                    <StatBadge tone={card.priceChangePercent >= 0 ? "positive" : "negative"}>{card.priceChangePercent >= 0 ? "+" : ""}{card.priceChangePercent.toFixed(2)}%</StatBadge>
+                    <span key={`${card.pair}-change-${meterPulse[card.pair] ?? 0}`} className={priceFlash ? `price-flash-${priceFlash}` : ""}>
+                      <StatBadge tone={card.priceChangePercent >= 0 ? "positive" : "negative"}>{card.priceChangePercent >= 0 ? "+" : ""}{card.priceChangePercent.toFixed(2)}%</StatBadge>
+                    </span>
                   </div>
 
                   <div className="mb-3 flex h-8 items-end gap-[2px]">
                     {Array.from({ length: 10 }, (_, idx) => (
                       <span
-                        key={`${card.pair}-${idx}`}
-                        className={`w-full rounded-sm ${idx < signal.activeBars ? signal.barBg : "bg-slate-800"}`}
+                        key={`${card.pair}-${meterPulse[card.pair] ?? 0}-${idx}`}
+                        className={`w-full rounded-sm transition-all duration-300 ${idx < signal.activeBars ? signal.barBg : "bg-slate-800"} ${meterPulse[card.pair] ? "meter-bar-live" : ""}`}
                         style={{ height: `${Math.max(18, (card.spark[idx] ?? card.spark[card.spark.length - 1]) / 3.5)}%` }}
                       />
                     ))}
