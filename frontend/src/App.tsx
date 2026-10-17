@@ -5,10 +5,13 @@ import {
   BrainCircuit,
   ChevronDown,
   Search,
+  Send,
   Settings,
   Sparkles,
   Zap,
   UserRound,
+  MessageCircle,
+  X,
 } from "lucide-react";
 
 import { TradingChart } from "./components/TradingChart";
@@ -19,6 +22,7 @@ import { AuthModal } from "./components/AuthModal";
 import { UserProfileModal } from "./components/UserProfileModal";
 import { MarketStructure } from "./components/MarketStructure";
 import { MarketAlertsPanel } from "./components/MarketAlertsPanel";
+import { NewsAnalysisSection } from "./components/NewsAnalysisSection";
 import { AdBanner } from "./components/AdBanner";
 import { Watchlist } from "./components/Watchlist";
 import { useAuth } from "./context/AuthContext";
@@ -1227,6 +1231,41 @@ function App() {
           </aside>
         </div>
       </div>
+
+      <NewsAnalysisSection />
+
+      <footer className="border-t border-slate-800 bg-[#080b11]">
+        <div className="mx-auto grid max-w-[1700px] gap-8 px-4 py-10 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1.2fr] xl:px-6">
+          <div>
+            <div className="flex items-center gap-3">
+              <img src="/logo.svg" alt="SnapChart AI Pro" className="h-10 w-10" />
+              <span className="text-lg font-bold tracking-tight text-white">SnapChart <span className="text-cyan-300">AI Pro</span></span>
+            </div>
+            <p className="mt-4 max-w-sm text-sm leading-6 text-slate-400">Nền tảng phân tích thị trường và tín hiệu giao dịch realtime cho trader hiện đại.</p>
+          </div>
+          <div>
+            <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-300">Thông tin</h2>
+            <nav className="mt-4 flex flex-col gap-3 text-sm text-slate-400">
+              <a href="#about" className="transition hover:text-cyan-300">Về chúng tôi</a>
+              <a href="#terms" className="transition hover:text-cyan-300">Điều khoản sử dụng</a>
+              <a href="#privacy" className="transition hover:text-cyan-300">Chính sách bảo mật</a>
+            </nav>
+          </div>
+          <div>
+            <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-300">Kết nối</h2>
+            <div className="mt-4 flex gap-2">
+              <a href="https://t.me/" target="_blank" rel="noreferrer" aria-label="Telegram" className="rounded-lg border border-slate-700 p-2 text-slate-400 transition hover:border-cyan-400/50 hover:text-cyan-300"><Send className="h-4 w-4" /></a>
+              <a href="https://x.com/" target="_blank" rel="noreferrer" aria-label="X Twitter" className="rounded-lg border border-slate-700 p-2 text-slate-400 transition hover:border-cyan-400/50 hover:text-cyan-300"><X className="h-4 w-4" /></a>
+              <a href="https://discord.com/" target="_blank" rel="noreferrer" aria-label="Discord" className="rounded-lg border border-slate-700 p-2 text-slate-400 transition hover:border-cyan-400/50 hover:text-cyan-300"><MessageCircle className="h-4 w-4" /></a>
+            </div>
+          </div>
+          <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4">
+            <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-200">Cảnh báo rủi ro đầu tư</h2>
+            <p className="mt-3 text-xs leading-5 text-slate-400">Giao dịch tài sản số có rủi ro cao. Nội dung và tín hiệu chỉ nhằm mục đích tham khảo, không phải lời khuyên đầu tư.</p>
+          </div>
+        </div>
+        <div className="border-t border-slate-800/80 py-4 text-center text-[10px] uppercase tracking-[0.14em] text-slate-600">© 2026 SnapChart AI Pro • Trade with discipline</div>
+      </footer>
 
       <button className="fixed bottom-6 right-6 flex h-12 w-12 items-center justify-center rounded-full border border-violet-500/50 bg-violet-500/15 text-xl text-violet-200 shadow-[0_0_22px_rgba(168,85,247,0.35)] transition hover:scale-[1.02]">
         ?
