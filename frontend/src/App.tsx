@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Bot,
@@ -12,6 +12,7 @@ import {
   UserRound,
   MessageCircle,
   X,
+  Bell,
 } from "lucide-react";
 
 import { TradingChart } from "./components/TradingChart";
@@ -118,6 +119,7 @@ type HighWinrateSetup = {
   expectedWinrate: number;
   confluenceReasons: string[];
   newsStatus: string;
+  sourceCandleCloseTime?: number;
 };
 
 export interface TradeSignal {
@@ -202,6 +204,10 @@ function App() {
   const [visionStructure, setVisionStructure] = useState<MarketStructureData | null>(null);
   const [tradingSignalPanel, setTradingSignalPanel] = useState<MarketSignal | null>(null);
   const [highWinrateSetup, setHighWinrateSetup] = useState<HighWinrateSetup | null>(null);
+  const [backgroundToast, setBackgroundToast] = useState<HighWinrateSetup | null>(null);
+  const [isSignalDetailsOpen, setIsSignalDetailsOpen] = useState(false);
+  const [isBackgroundScanning, setIsBackgroundScanning] = useState(false);
+  const notifiedSetupKeysRef = useRef<Record<string, string>>({});
   const [isGeneratingSetup, setIsGeneratingSetup] = useState(false);
   const [highWinrateError, setHighWinrateError] = useState<string | null>(null);
   const [tradeHistory, setTradeHistory] = useState<TradeSignal[]>(() => readTradeHistory());
@@ -468,13 +474,8 @@ function App() {
     setPreviewUrl(null);
   };
 
-  const handleGenerateHighWinrateSignal = async () => {
-    setIsGeneratingSetup(true);
-    setHighWinrateError(null);
-    setHighWinrateSetup(null);
-
-    try {
-      const symbol = selectedSymbol.replace(/\//g, "").toUpperCase();
+  const fetchHighWinrateSetup = useCallback(async (symbolInput: string): Promise<HighWinrateSetup> => {
+      const symbol = symbolInput.replace(/\//g, "").toUpperCase();
       const intervals = ["4h", "1h", "15m"] as const;
       const candleResults = await Promise.all(intervals.map(async (interval) => {
         const response = await fetch(`https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=80`);
@@ -498,23 +499,9 @@ function App() {
           close: closes[closes.length - 1],
           range,
           strength: Math.min(1, Math.abs(change) / 0.02),
+          closeTime: Number(rows[rows.length - 1]?.[6] ?? 0),
         };
       }));
-
-      let newsStatus = "Không phát hiện cảnh báo biến động cao từ tin tức gần đây.";
-      try {
-        const newsResponse = await fetch("https://min-api.cryptocompare.com/data/v2/news/?lang=EN");
-        if (newsResponse.ok) {
-          const newsPayload = (await newsResponse.json()) as { Data?: Array<{ title?: string; published_on?: number }> };
-          const recentNews = (newsPayload.Data ?? []).filter((item) => (Date.now() / 1000 - Number(item.published_on ?? 0)) < 6 * 60 * 60);
-          const volatilityKeywords = /rate|fed|inflation|hack|liquidat|sec|etf|war|crisis|regulation/i;
-          if (recentNews.some((item) => volatilityKeywords.test(item.title ?? ""))) {
-            newsStatus = "Có tin tức vĩ mô/biến động cao trong 6 giờ gần đây; giảm rủi ro và chờ xác nhận.";
-          }
-        }
-      } catch {
-        newsStatus = "Không thể tải nguồn tin tức; setup vẫn yêu cầu hợp lưu giá xác nhận.";
-      }
 
       const h4 = candleResults[0];
       const h1 = candleResults[1];
@@ -539,7 +526,7 @@ function App() {
         "Biên độ M15 được dùng để đặt Stop Loss thích ứng",
         "R:R tối thiểu 1:2 đã được kiểm tra",
       ];
-      setHighWinrateSetup({
+      return {
         symbol: normalizePairForDisplay(symbol),
         direction,
         timeframe: "M15",
@@ -549,8 +536,19 @@ function App() {
         riskReward: "1:2.0",
         expectedWinrate,
         confluenceReasons: reasons,
-        newsStatus,
-      });
+        newsStatus: "Setup được xác nhận bằng dữ liệu giá Binance realtime.",
+        sourceCandleCloseTime: m15.closeTime,
+      };
+  }, []);
+
+  const handleGenerateHighWinrateSignal = async () => {
+    setIsGeneratingSetup(true);
+    setHighWinrateError(null);
+    setHighWinrateSetup(null);
+
+    try {
+      const setup = await fetchHighWinrateSetup(selectedSymbol);
+      setHighWinrateSetup(setup);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Không thể tạo tín hiệu đa khung thời gian.";
       setHighWinrateError(message);
@@ -558,6 +556,83 @@ function App() {
       setIsGeneratingSetup(false);
     }
   };
+
+  const openBackgroundSignal = useCallback((setup: HighWinrateSetup) => {
+    const signal: MarketSignal = {
+      symbol: setup.symbol,
+      direction: setup.direction,
+      entry: setup.entry,
+      stopLoss: setup.stopLoss,
+      takeProfit: setup.takeProfit,
+      riskReward: setup.riskReward,
+      confidence: setup.expectedWinrate,
+      timestamp: Date.now(),
+    };
+    setSelectedSymbol(setup.symbol);
+    setSelectedTimeframe("15m");
+    setHighWinrateSetup(setup);
+    setVisionSignal(signal);
+    setTradingSignalPanel(signal);
+    setBackgroundToast(null);
+    setIsSignalDetailsOpen(true);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const playNotificationSound = () => {
+      try {
+        const AudioContextConstructor = window.AudioContext || (
+          window as typeof window & { webkitAudioContext?: typeof AudioContext }
+        ).webkitAudioContext;
+        if (!AudioContextConstructor) return;
+        const context = new AudioContextConstructor();
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+        oscillator.type = "sine";
+        oscillator.frequency.setValueAtTime(660, context.currentTime);
+        gain.gain.setValueAtTime(0.0001, context.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.045, context.currentTime + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.18);
+        oscillator.connect(gain);
+        gain.connect(context.destination);
+        oscillator.start();
+        oscillator.stop(context.currentTime + 0.2);
+        oscillator.addEventListener("ended", () => void context.close());
+      } catch (error) {
+        console.warn("Signal notification sound is unavailable.", error);
+      }
+    };
+
+    const scanMarkets = async () => {
+      if (cancelled) return;
+      setIsBackgroundScanning(true);
+      try {
+        for (const symbol of ["BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT"]) {
+          if (cancelled) return;
+          try {
+            const setup = await fetchHighWinrateSetup(symbol);
+            const setupKey = `${setup.direction}:${setup.sourceCandleCloseTime ?? 0}`;
+            if (notifiedSetupKeysRef.current[symbol] === setupKey) continue;
+            notifiedSetupKeysRef.current[symbol] = setupKey;
+            setBackgroundToast(setup);
+            playNotificationSound();
+          } catch (error) {
+            console.warn(`[BACKGROUND SCANNER] ${symbol} skipped`, error);
+          }
+        }
+      } finally {
+        if (!cancelled) setIsBackgroundScanning(false);
+      }
+    };
+
+    void scanMarkets();
+    const intervalId = window.setInterval(() => void scanMarkets(), 5 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [fetchHighWinrateSetup]);
 
   const handleFileUpload = async (file: File) => {
     const validType = file.type.startsWith("image/") || /\.(png|jpe?g|webp)$/i.test(file.name);
@@ -1389,6 +1464,84 @@ function App() {
       </div>
 
       <NewsAnalysisSection />
+
+      {backgroundToast ? (
+        <div
+          role="status"
+          onClick={() => openBackgroundSignal(backgroundToast)}
+          className="fixed right-4 top-4 z-50 w-[min(22rem,calc(100vw-2rem))] cursor-pointer rounded-2xl border border-emerald-400/40 bg-[#101923] p-4 shadow-2xl shadow-emerald-950/50"
+        >
+          <div className="flex items-start gap-3">
+            <div className={`rounded-xl p-2 ${backgroundToast.direction === "LONG" ? "bg-emerald-500/15 text-emerald-300" : "bg-rose-500/15 text-rose-300"}`}>
+              <Bell className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-bold uppercase tracking-[0.14em] text-emerald-300">Tín hiệu rủi ro thấp mới</p>
+                <button type="button" onClick={(event) => { event.stopPropagation(); setBackgroundToast(null); }} aria-label="Đóng thông báo" className="text-slate-500 hover:text-slate-200">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <p className="mt-1 text-base font-bold text-white">{backgroundToast.symbol} <span className={backgroundToast.direction === "LONG" ? "text-emerald-300" : "text-rose-300"}>{backgroundToast.direction}</span></p>
+              <div className="mt-2 grid grid-cols-3 gap-2 text-[10px]">
+                <span className="rounded-lg bg-slate-950/70 p-2 text-slate-300">Entry<br /><strong className="text-white">{formatMoney(backgroundToast.entry)}</strong></span>
+                <span className="rounded-lg bg-slate-950/70 p-2 text-slate-300">SL<br /><strong className="text-rose-300">{formatMoney(backgroundToast.stopLoss)}</strong></span>
+                <span className="rounded-lg bg-slate-950/70 p-2 text-slate-300">TP<br /><strong className="text-emerald-300">{formatMoney(backgroundToast.takeProfit)}</strong></span>
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <span className="text-[10px] font-semibold text-cyan-300">R:R {backgroundToast.riskReward} • Winrate {backgroundToast.expectedWinrate}%</span>
+                <button type="button" onClick={(event) => { event.stopPropagation(); openBackgroundSignal(backgroundToast); }} className="rounded-lg bg-emerald-500 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-950 transition hover:bg-emerald-400">
+                  Xem chi tiết
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isSignalDetailsOpen && highWinrateSetup ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Chi tiết tín hiệu">
+          <div className="w-full max-w-xl rounded-3xl border border-emerald-400/30 bg-[#121923] p-5 shadow-2xl shadow-emerald-950/50">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-300">Phân tích setup tự động</p>
+                <h2 className="mt-1 text-2xl font-bold text-white">{highWinrateSetup.symbol} <span className={highWinrateSetup.direction === "LONG" ? "text-emerald-300" : "text-rose-300"}>{highWinrateSetup.direction}</span></h2>
+                <p className="mt-1 text-sm text-slate-400">Đồng thuận H4 • H1 • M15 · Winrate dự kiến {highWinrateSetup.expectedWinrate}%</p>
+              </div>
+              <button type="button" onClick={() => setIsSignalDetailsOpen(false)} aria-label="Đóng chi tiết tín hiệu" className="rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-white">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {[
+                ["Entry", highWinrateSetup.entry, "text-white"],
+                ["Stop Loss", highWinrateSetup.stopLoss, "text-rose-300"],
+                ["Take Profit", highWinrateSetup.takeProfit, "text-emerald-300"],
+              ].map(([label, value, tone]) => (
+                <div key={label} className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+                  <span className="block text-[10px] uppercase tracking-[0.12em] text-slate-500">{label}</span>
+                  <strong className={`mt-1 block text-sm ${tone}`}>{formatMoney(Number(value))}</strong>
+                </div>
+              ))}
+              <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+                <span className="block text-[10px] uppercase tracking-[0.12em] text-slate-500">R:R</span>
+                <strong className="mt-1 block text-sm text-cyan-300">{highWinrateSetup.riskReward}</strong>
+              </div>
+            </div>
+            <div className="mt-5 rounded-xl border border-slate-800 bg-slate-950/50 p-4">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Lý do hợp lưu</p>
+              <div className="mt-3 space-y-2 text-sm text-slate-300">
+                {highWinrateSetup.confluenceReasons.map((reason) => <p key={reason}>✓ {reason}</p>)}
+              </div>
+              <p className="mt-4 text-xs text-amber-200">{highWinrateSetup.newsStatus}</p>
+            </div>
+            <div className="mt-4 flex items-center justify-between gap-3">
+              <span className="text-xs text-slate-500">{isBackgroundScanning ? "Đang quét các cặp còn lại..." : "Scanner nền đang hoạt động mỗi 5 phút."}</span>
+              <button type="button" onClick={() => setIsSignalDetailsOpen(false)} className="rounded-xl bg-slate-800 px-4 py-2 text-sm font-semibold text-slate-100 hover:bg-slate-700">Đóng</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <footer className="border-t border-slate-800 bg-[#080b11]">
         <div className="mx-auto grid max-w-[1700px] gap-8 px-4 py-10 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1.2fr] xl:px-6">
