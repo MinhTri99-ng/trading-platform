@@ -33,6 +33,12 @@ export interface MarketSignal {
 }
 
 const normalizeSymbol = (symbol: string) => symbol.replace(/\s+/g, "").replace("/", "").toUpperCase();
+const isCryptoSymbol = (symbol: string) => symbol.endsWith("USDT") || symbol.endsWith("BUSD") || symbol.endsWith("USDC");
+const toYahooSymbol = (symbol: string) => {
+  if (symbol.startsWith("XAU")) return "GC=F";
+  if (symbol.includes("USD") && !isCryptoSymbol(symbol)) return `${symbol}=X`;
+  return symbol;
+};
 
 const getApiUrl = () => {
   const configuredUrl = import.meta.env.VITE_API_URL?.trim();
@@ -116,6 +122,7 @@ export function useMarketRealtime({ symbolCode, interval }: { symbolCode: string
   useEffect(() => {
     const normalizedSymbol = normalizeSymbol(symbolCode);
     const normalizedInterval = interval.toLowerCase();
+    const cryptoMarket = isCryptoSymbol(normalizedSymbol);
     const baseUrl = getApiUrl();
 
     let cancelled = false;
@@ -148,6 +155,34 @@ export function useMarketRealtime({ symbolCode, interval }: { symbolCode: string
       }
     };
 
+    const fetchYahooHistory = async (): Promise<BinanceKlineCandle[]> => {
+      try {
+        const response = await fetch(
+          `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(toYahooSymbol(normalizedSymbol))}?range=60d&interval=1h`,
+          { cache: "no-store" }
+        );
+        if (!response.ok) return [];
+        const payload = (await response.json()) as {
+          chart?: { result?: Array<{ timestamp?: number[]; indicators?: { quote?: Array<{ open?: number[]; high?: number[]; low?: number[]; close?: number[]; volume?: number[] }> } }> }
+        };
+        const result = payload.chart?.result?.[0];
+        const quote = result?.indicators?.quote?.[0];
+        return (result?.timestamp ?? []).map((timestamp, index) => ({
+          openTime: timestamp * 1000,
+          closeTime: timestamp * 1000 + 3600000,
+          open: Number(quote?.open?.[index]),
+          high: Number(quote?.high?.[index]),
+          low: Number(quote?.low?.[index]),
+          close: Number(quote?.close?.[index]),
+          volume: Number(quote?.volume?.[index] ?? 0),
+          isClosed: true,
+        })).filter((candle) => [candle.open, candle.high, candle.low, candle.close].every(Number.isFinite));
+      } catch (error) {
+        console.warn("Yahoo Finance fallback failed:", error);
+        return [];
+      }
+    };
+
     const hydrateHistory = async () => {
       let nextCandles: BinanceKlineCandle[] = [];
       try {
@@ -164,8 +199,11 @@ export function useMarketRealtime({ symbolCode, interval }: { symbolCode: string
         console.warn("Market history hydrate failed, trying Binance fallback:", error);
       }
 
-      if (nextCandles.length === 0) {
+      if (nextCandles.length === 0 && cryptoMarket) {
         nextCandles = deduplicateAndLimitCandles(await fetchBinanceHistory());
+      }
+      if (nextCandles.length === 0 && !cryptoMarket) {
+        nextCandles = deduplicateAndLimitCandles(await fetchYahooHistory());
       }
 
       if (!cancelled && nextCandles.length > 0) {
@@ -340,8 +378,12 @@ export function useMarketRealtime({ symbolCode, interval }: { symbolCode: string
   };
 
   void hydrateHistory();
-  startBinanceFallback();
-  connect();
+  if (cryptoMarket) {
+    startBinanceFallback();
+    connect();
+  } else {
+    setIsConnected(true);
+  }
 
   return () => {
     cancelled = true;

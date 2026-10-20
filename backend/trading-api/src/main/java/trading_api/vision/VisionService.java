@@ -22,7 +22,7 @@ public class VisionService {
     private final ChartVisionProvider chartVisionProvider;
 
     private static final Pattern SYMBOL_PATTERN = Pattern.compile(
-            "(?i)\\b(?:BTC|ETH|SOL|XRP|BNB|ADA|DOGE|LINK|AVAX|TRX)(?:[/\\-_ ]?(?:USD|USDT|BUSD|USDC|BTC))?\\b"
+            "(?i)\\b(?:BTC|ETH|SOL|XRP|BNB|ADA|DOGE|LINK|AVAX|TRX|XAU|EUR|GBP|USD|AAPL|MSFT|TSLA|NVDA)(?:[/\\-_ ]?(?:USD|USDT|BUSD|USDC|BTC))?\\b"
     );
     private static final Pattern TIMEFRAME_PATTERN = Pattern.compile(
             "(?i)(?:\\b(?:12h|15m|30m|1w|1d|4h|3h|2h|1h|5m|1m)\\b|\\b(?:d|day|daily|w|week|weekly)\\b)"
@@ -114,9 +114,9 @@ public class VisionService {
                 visionResult.status(), visionResult.confidence(), visionResult.detectionWarnings());
         log.info("[VISION RAW] rawSymbol={} rawTimeframe={} textSource={}", rawSymbol, rawTimeframe, textSource);
 
-        String symbol = normalizeSymbol(requestedSymbol);
+        String symbol = normalizeSymbol(rawSymbol);
         if (symbol.isBlank()) {
-            symbol = rawSymbol;
+            symbol = normalizeSymbol(requestedSymbol);
         }
         if (symbol == null || symbol.isBlank()) {
             symbol = filenameSymbol;
@@ -146,6 +146,8 @@ public class VisionService {
             throw new IllegalArgumentException("INVALID INPUT: TIMEFRAME_UNDETECTED");
         }
 
+        String market = normalizeMarket(visionResult.market(), normalizedSymbol);
+
         log.info("[SCREENSHOT] detected symbol={} timeframe={}", normalizedSymbol, normalizedTimeframe);
         log.info("[NORMALIZED] symbol={} timeframe={}", normalizedSymbol, normalizedTimeframe);
         log.info("[Metadata extracted] symbol={}, timeframe={}, width={}, height={}, pattern={}, indicators={}, priceLevels={}",
@@ -162,8 +164,23 @@ public class VisionService {
                 visionResult.confidence(),
                 visionResult.status(),
                 visionResult.detectedText(),
-                visionResult.detectionWarnings()
+                visionResult.detectionWarnings(),
+                market
         );
+    }
+
+    private String normalizeMarket(String detectedMarket, String symbol) {
+        if (detectedMarket != null && !detectedMarket.isBlank()) {
+            String normalized = detectedMarket.trim().toUpperCase(Locale.ROOT);
+            if (normalized.startsWith("CRYPTO")) return "Crypto";
+            if (normalized.startsWith("FOREX") || normalized.startsWith("FX")) return "Forex";
+            if (normalized.startsWith("COMMOD")) return "Commodities";
+            if (normalized.startsWith("STOCK") || normalized.startsWith("EQUIT")) return "Stocks";
+        }
+        if (symbol.startsWith("XAU") || symbol.startsWith("XAG") || symbol.equals("GC")) return "Commodities";
+        if (symbol.matches("^(EUR|GBP|JPY|AUD|NZD|CHF|CAD).*(USD|USDT)$")) return "Forex";
+        if (symbol.matches("^[A-Z]{1,5}$")) return "Stocks";
+        return "Crypto";
     }
 
     private BufferedImage decodeImage(byte[] imageBytes) {
@@ -299,7 +316,10 @@ public class VisionService {
             normalized = normalized.replace("/", "");
         }
 
-        if (normalized.endsWith("USD") && !normalized.endsWith("USDT")) {
+        boolean knownNonCrypto = normalized.startsWith("XAU") || normalized.startsWith("XAG")
+                || normalized.matches("^(EUR|GBP|USD|JPY|AUD|NZD|CHF|CAD).*(USD)$")
+                || normalized.matches("^[A-Z]{1,5}$");
+        if (normalized.endsWith("USD") && !normalized.endsWith("USDT") && !knownNonCrypto) {
             normalized = normalized.substring(0, normalized.length() - 3) + "USDT";
         }
 

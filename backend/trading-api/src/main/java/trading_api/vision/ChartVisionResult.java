@@ -14,8 +14,28 @@ public record ChartVisionResult(
         List<String> detectedRegions,
         Double estimatedPriceHigh,
         Double estimatedPriceLow,
-        List<String> detectionWarnings
+        List<String> detectionWarnings,
+        String market
 ) {
+    public ChartVisionResult(
+            String status,
+            String symbol,
+            String timeframe,
+            List<String> visibleIndicators,
+            List<String> visiblePriceLevels,
+            String chartType,
+            Double confidence,
+            List<String> detectedText,
+            List<String> detectedRegions,
+            Double estimatedPriceHigh,
+            Double estimatedPriceLow,
+            List<String> detectionWarnings
+    ) {
+        this(status, symbol, timeframe, visibleIndicators, visiblePriceLevels, chartType,
+                confidence, detectedText, detectedRegions, estimatedPriceHigh, estimatedPriceLow,
+                detectionWarnings, null);
+    }
+
     public static ChartVisionResult unavailable(String reason) {
         return new ChartVisionResult(
                 "VISION_UNAVAILABLE",
@@ -29,7 +49,8 @@ public record ChartVisionResult(
                 List.of(),
                 null,
                 null,
-                List.of(reason)
+                List.of(reason),
+                null
         );
     }
 }

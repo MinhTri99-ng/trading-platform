@@ -77,6 +77,7 @@ public class ChartImageController {
                     ? "No reliable price data available from image, live providers, or configured fallback"
                     : result.reason());
             response.put("symbol", result.verifiedSymbol());
+            response.put("market", metadata.market());
             response.put("timeframe", result.verifiedTimeframe());
             response.put("pattern", metadata.pattern());
             response.put("indicatorsVisible", metadata.indicatorsVisible());
@@ -88,6 +89,7 @@ public class ChartImageController {
                 response.put("vision", Map.of(
                     "status", metadata.visionStatus(),
                     "confidence", metadata.confidence(),
+                    "market", metadata.market(),
                     "detectedText", metadata.detectedText(),
                     "warnings", metadata.detectionWarnings()
                 ));

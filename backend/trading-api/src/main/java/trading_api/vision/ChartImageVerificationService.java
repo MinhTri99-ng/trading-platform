@@ -107,7 +107,10 @@ public class ChartImageVerificationService {
         if (normalized.contains("/")) {
             normalized = normalized.replace("/", "");
         }
-        if (normalized.endsWith("USD") && !normalized.endsWith("USDT")) {
+        boolean knownNonCrypto = normalized.startsWith("XAU") || normalized.startsWith("XAG")
+                || normalized.matches("^(EUR|GBP|USD|JPY|AUD|NZD|CHF|CAD).*(USD)$")
+                || normalized.matches("^[A-Z]{1,5}$");
+        if (normalized.endsWith("USD") && !normalized.endsWith("USDT") && !knownNonCrypto) {
             normalized = normalized.substring(0, normalized.length() - 3) + "USDT";
         }
         if (normalized.endsWith("BUSD") || normalized.endsWith("USDC")) {

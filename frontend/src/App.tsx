@@ -106,6 +106,7 @@ type ScreenshotAnalysisResult = {
   riskReward?: string;
   confidence?: number;
   marketStructure?: MarketStructureData;
+  market?: "Crypto" | "Forex" | "Commodities" | "Stocks";
 };
 
 type HighWinrateSetup = {
@@ -138,6 +139,7 @@ export interface TradeSignal {
 
 const STORAGE_KEYS = {
   tradeHistory: "snapchart_signals",
+  supportedSymbols: "snapchart_supported_symbols",
 };
 const LEGACY_TRADE_HISTORY_KEY = "trading-platform-trade-history";
 
@@ -161,6 +163,23 @@ const readTradeHistory = (): TradeSignal[] => {
     // Ignore malformed or unavailable storage and use the starter history.
   }
   return initialSignals;
+};
+
+const normalizeAssetSymbol = (value: string) => value.trim().replace(/\s+/g, "").replace(/[-_]/g, "/").toUpperCase();
+
+const readSupportedSymbols = () => {
+  try {
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEYS.supportedSymbols) ?? "null") as unknown;
+    if (Array.isArray(stored)) {
+      const symbols = stored.filter((value): value is string => typeof value === "string")
+        .map(normalizeAssetSymbol)
+        .filter(Boolean);
+      if (symbols.length > 0) return [...new Set(symbols)];
+    }
+  } catch {
+    // Use the default markets when local storage is unavailable.
+  }
+  return [...quickSymbols];
 };
 
 const formatMoney = (value: number, currency: "USD" | "VND" = "USD") =>
@@ -192,6 +211,8 @@ function App() {
   const { settings, updateSettings } = useSettings();
   const { user, isAuthenticated, logout } = useAuth();
   const [selectedSymbol, setSelectedSymbol] = useState("BTC/USDT");
+  const [supportedSymbols, setSupportedSymbols] = useState<string[]>(readSupportedSymbols);
+  const [assetImportToast, setAssetImportToast] = useState<string | null>(null);
   const [selectedTimeframe, setSelectedTimeframe] = useState<Timeframe>("4H");
   const [indicatorState, setIndicatorState] = useState({ ema50: true, ema200: true, volume: true });
   const [showSmcOverlay, setShowSmcOverlay] = useState(false);
@@ -325,11 +346,22 @@ function App() {
 
   const normalizePairForDisplay = (value?: string) => {
     if (!value) return "BTC/USDT";
-    const raw = value.replace(/\s+/g, "").replace("/", "").toUpperCase();
-    if (raw.length >= 6 && !raw.endsWith("USDT")) {
-      return `${raw.slice(0, -3)}/${raw.slice(-3)}`;
+    const raw = normalizeAssetSymbol(value);
+    if (raw.includes("/")) return raw;
+    if (raw.endsWith("USDT")) {
+      return `${raw.slice(0, -4)}/USDT`;
     }
-    return raw.length >= 6 ? `${raw.slice(0, 3)}/${raw.slice(3)}` : raw;
+    if (raw.endsWith("USD") && raw.length > 3) return `${raw.slice(0, -3)}/USD`;
+    return raw;
+  };
+
+  const marketForSymbol = (symbol: string, market?: ScreenshotAnalysisResult["market"]) => {
+    if (market) return market;
+    const normalized = normalizeAssetSymbol(symbol);
+    if (/^(XAU|XAG|GC|SI)\b/.test(normalized)) return "Commodities" as const;
+    if (/^(EUR|GBP|USD|JPY|AUD|NZD|CHF|CAD).*(USD|USDT)$/.test(normalized)) return "Forex" as const;
+    if (/^[A-Z]{1,5}(?:\/USD)?$/.test(normalized) && !normalized.endsWith("USDT")) return "Stocks" as const;
+    return "Crypto" as const;
   };
 
   const normalizeTimeframeForDisplay = (value?: string) => {
@@ -478,9 +510,31 @@ function App() {
       const symbol = symbolInput.replace(/\//g, "").toUpperCase();
       const intervals = ["4h", "1h", "15m"] as const;
       const candleResults = await Promise.all(intervals.map(async (interval) => {
-        const response = await fetch(`https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=80`);
-        if (!response.ok) throw new Error(`Binance ${interval} request failed (${response.status})`);
-        const rows = (await response.json()) as unknown[][];
+        const market = marketForSymbol(symbolInput);
+        const yahooSymbol = market === "Commodities" ? "GC=F"
+          : market === "Forex" ? `${symbol}=X`
+          : symbol;
+        const endpoint = market === "Crypto"
+          ? `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=80`
+          : `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?range=60d&interval=1h`;
+        const response = await fetch(endpoint);
+        if (!response.ok) throw new Error(`${market} ${interval} request failed (${response.status})`);
+        const payload = (await response.json()) as unknown;
+        const rows = market === "Crypto"
+          ? payload as unknown[][]
+          : (() => {
+            const result = (payload as { chart?: { result?: Array<{ timestamp?: number[]; indicators?: { quote?: Array<{ open?: number[]; high?: number[]; low?: number[]; close?: number[]; }>; }; }> } }).chart?.result?.[0];
+            const quote = result?.indicators?.quote?.[0];
+            return (result?.timestamp ?? []).map((timestamp, index) => [
+              timestamp * 1000,
+              quote?.open?.[index],
+              quote?.high?.[index],
+              quote?.low?.[index],
+              quote?.close?.[index],
+              0,
+              timestamp * 1000,
+            ]);
+          })();
         const closes = rows.map((row) => Number(row[4])).filter((value) => Number.isFinite(value));
         const highs = rows.map((row) => Number(row[2])).filter((value) => Number.isFinite(value));
         const lows = rows.map((row) => Number(row[3])).filter((value) => Number.isFinite(value));
@@ -536,7 +590,7 @@ function App() {
         riskReward: "1:2.0",
         expectedWinrate,
         confluenceReasons: reasons,
-        newsStatus: "Setup được xác nhận bằng dữ liệu giá Binance realtime.",
+        newsStatus: "Setup được xác nhận bằng dữ liệu thị trường realtime.",
         sourceCandleCloseTime: m15.closeTime,
       };
   }, []);
@@ -608,7 +662,7 @@ function App() {
       if (cancelled) return;
       setIsBackgroundScanning(true);
       try {
-        for (const symbol of ["BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT"]) {
+        for (const symbol of supportedSymbols) {
           if (cancelled) return;
           try {
             const setup = await fetchHighWinrateSetup(symbol);
@@ -632,7 +686,7 @@ function App() {
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [fetchHighWinrateSetup]);
+  }, [fetchHighWinrateSetup, supportedSymbols]);
 
   const handleFileUpload = async (file: File) => {
     const validType = file.type.startsWith("image/") || /\.(png|jpe?g|webp)$/i.test(file.name);
@@ -728,8 +782,14 @@ function App() {
         riskReward: generatedSignal?.riskReward,
         confidence: generatedSignal?.confidence,
         marketStructure: payload.marketStructure,
+        market: payload.market,
       });
       setVisionStructure(payload.valid ? payload.marketStructure ?? null : null);
+      const detectedSymbol = payload.symbol ? normalizePairForDisplay(payload.symbol) : null;
+      if (detectedSymbol && !supportedSymbols.some((symbol) => normalizeAssetSymbol(symbol) === normalizeAssetSymbol(detectedSymbol))) {
+        setSupportedSymbols((current) => [...current, detectedSymbol]);
+        setAssetImportToast(`Đã tự động nhận diện và nạp thị trường mới: ${detectedSymbol} vào hệ thống SnapChart!`);
+      }
 
       if (payload.valid && generatedSignal && generatedSignal.direction !== "NONE") {
         const verifiedSymbol = normalizePairForDisplay(payload.symbol ?? selectedSymbol);
@@ -812,6 +872,14 @@ function App() {
   useEffect(() => {
     previewUrlRef.current = previewUrl;
   }, [previewUrl]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.supportedSymbols, JSON.stringify(supportedSymbols));
+    } catch {
+      console.warn("Unable to persist dynamically imported symbols.");
+    }
+  }, [supportedSymbols]);
 
   const handlePasteFromClipboard = async () => {
     try {
@@ -898,7 +966,7 @@ function App() {
                 onChange={(event) => setSelectedSymbol(event.target.value)}
                 className="w-[92px] appearance-none rounded-lg border border-slate-800 bg-slate-900/70 px-2.5 py-1.5 pr-7 text-xs font-medium text-slate-200 outline-none transition hover:border-slate-700 focus:border-blue-500 sm:w-auto sm:rounded-xl sm:px-3 sm:py-2 sm:text-sm"
               >
-                {quickSymbols.map((symbol) => (
+                {supportedSymbols.map((symbol) => (
                   <option key={symbol} value={symbol}>
                     {symbol}
                   </option>
@@ -1385,7 +1453,7 @@ function App() {
                   </div>
 
                   <div className="space-y-2 text-sm text-slate-300">
-                    <div className="flex justify-between gap-3"><span className="text-slate-400">{t("dashboard.symbol")}</span><span className="font-medium text-slate-100">{analysisResult.symbol ?? "—"}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-slate-400">{t("dashboard.symbol")}</span><span className="font-medium text-slate-100">{analysisResult.symbol ?? "—"}{analysisResult.market ? <span className="ml-2 rounded-full border border-cyan-400/30 bg-cyan-400/10 px-2 py-0.5 text-[9px] text-cyan-200">{analysisResult.market}</span> : null}</span></div>
                     <div className="flex justify-between gap-3"><span className="text-slate-400">{t("dashboard.timeframe")}</span><span className="font-medium text-slate-100">{analysisResult.timeframe ?? "—"}</span></div>
                     <div className="flex justify-between gap-3"><span className="text-slate-400">{t("dashboard.pattern")}</span><span className="font-medium text-slate-100">{analysisResult.pattern ?? "—"}</span></div>
                     <div className="flex justify-between gap-3"><span className="text-slate-400">{t("dashboard.status")}</span><span className="font-medium text-slate-100">{analysisResult.verification ?? analysisResult.status ?? "—"}</span></div>
@@ -1464,6 +1532,14 @@ function App() {
       </div>
 
       <NewsAnalysisSection />
+
+      {assetImportToast ? (
+        <div role="status" className="fixed right-4 top-4 z-50 flex max-w-sm items-start gap-3 rounded-2xl border border-cyan-400/40 bg-[#101923] p-4 text-sm text-cyan-100 shadow-2xl shadow-cyan-950/50">
+          <span className="mt-0.5 text-lg">✓</span>
+          <p className="flex-1 leading-6">{assetImportToast}</p>
+          <button type="button" onClick={() => setAssetImportToast(null)} aria-label="Đóng thông báo thị trường mới" className="text-slate-500 hover:text-slate-200"><X className="h-4 w-4" /></button>
+        </div>
+      ) : null}
 
       {backgroundToast ? (
         <div

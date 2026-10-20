@@ -13,7 +13,8 @@ public record ChartImageMetadata(
         Double confidence,
         String visionStatus,
         List<String> detectedText,
-        List<String> detectionWarnings
+        List<String> detectionWarnings,
+        String market
 ) {
     public ChartImageMetadata(
             String symbol,
@@ -27,6 +28,6 @@ public record ChartImageMetadata(
     ) {
         this(symbol, timeframe, pattern, indicatorsVisible, keyPriceLevels,
                 estimatedPriceHigh, estimatedPriceLow, confidence,
-                "VISION_UNAVAILABLE", List.of(), List.of());
+                "VISION_UNAVAILABLE", List.of(), List.of(), null);
     }
 }
