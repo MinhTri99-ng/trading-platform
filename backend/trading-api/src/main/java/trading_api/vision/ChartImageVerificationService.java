@@ -39,6 +39,22 @@ public class ChartImageVerificationService {
             return new ChartImageVerificationResult(false, "TIMEFRAME_UNDETECTED", "Missing timeframe", metadata, symbol, null, null);
         }
 
+        if (isNonCryptoAsset(metadata, symbol)) {
+            String snapshot = "symbol=" + symbol + ", market=" + normalizedMarket(metadata.market())
+                    + ", timeframe=" + timeframe + ", source=VISION_METADATA";
+            log.info("[NON-CRYPTO ASSET ACCEPTED] symbol={} market={} timeframe={}",
+                    symbol, normalizedMarket(metadata.market()), timeframe);
+            return new ChartImageVerificationResult(
+                    true,
+                    "NON_CRYPTO_ASSET_ACCEPTED",
+                    "Non-Crypto asset accepted from Vision metadata; Binance market verification skipped",
+                    metadata,
+                    symbol,
+                    timeframe,
+                    snapshot
+            );
+        }
+
         log.info("[MARKET VERIFICATION] symbol={} timeframe={}", symbol, timeframe);
         List<BigDecimal> marketRange;
         try {
@@ -96,6 +112,18 @@ public class ChartImageVerificationService {
                 timeframe,
                 marketSnapshot
         );
+    }
+
+    private boolean isNonCryptoAsset(ChartImageMetadata metadata, String symbol) {
+        String market = normalizedMarket(metadata.market());
+        if (!market.isBlank() && !"CRYPTO".equals(market)) {
+            return true;
+        }
+        return !(symbol.endsWith("USDT") || symbol.endsWith("BUSD") || symbol.endsWith("USDC"));
+    }
+
+    private String normalizedMarket(String market) {
+        return market == null ? "" : market.trim().toUpperCase(Locale.ROOT);
     }
 
     private String normalizeSymbol(String symbol) {

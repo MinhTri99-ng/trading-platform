@@ -68,7 +68,9 @@ public class ChartImageController {
             }
 
             Map<String, Object> response = new LinkedHashMap<>();
-                String responseStatus = result.valid() && generatedSignal == null
+                String responseStatus = "NON_CRYPTO_ASSET_ACCEPTED".equals(result.status())
+                    ? result.status()
+                    : result.valid() && generatedSignal == null
                     ? "NO_PRICE_DATA"
                     : result.status();
                 response.put("status", responseStatus);
@@ -81,11 +83,23 @@ public class ChartImageController {
             response.put("timeframe", result.verifiedTimeframe());
             response.put("pattern", metadata.pattern());
             response.put("indicatorsVisible", metadata.indicatorsVisible());
+            response.put("keyPriceLevels", metadata.keyPriceLevels());
+            response.put("detectedText", metadata.detectedText());
+            response.put("detectionWarnings", metadata.detectionWarnings());
+            response.put("smc", Map.of(
+                    "pattern", metadata.pattern(),
+                    "keyPriceLevels", metadata.keyPriceLevels(),
+                    "indicatorsVisible", metadata.indicatorsVisible()
+            ));
             response.put("marketSnapshot", result.marketSnapshot());
-                response.put("verification", result.valid() && !"MOCK_VERIFIED".equals(result.status())
+                response.put("verification", "NON_CRYPTO_ASSET_ACCEPTED".equals(result.status())
+                    ? "Accepted from Vision metadata"
+                    : result.valid() && !"MOCK_VERIFIED".equals(result.status())
                     ? "Verified with Live Market Data"
                     : result.status());
-            response.put("sourceOfTruth", "Binance / Market API");
+            response.put("sourceOfTruth", "NON_CRYPTO_ASSET_ACCEPTED".equals(result.status())
+                    ? "Vision metadata / chart analysis"
+                    : "Binance / Market API");
                 response.put("vision", Map.of(
                     "status", metadata.visionStatus(),
                     "confidence", metadata.confidence(),
