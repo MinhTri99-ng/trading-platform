@@ -31,3 +31,11 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# Local secrets and environment overrides
+.env
+*.env
+*.env.*
+!.env.example
+application.properties
+application-*.properties

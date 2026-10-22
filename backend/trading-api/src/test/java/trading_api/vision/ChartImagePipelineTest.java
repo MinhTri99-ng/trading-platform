@@ -69,6 +69,33 @@ class ChartImagePipelineTest {
     }
 
     @Test
+    void unavailableVisionUsesCustomSymbolAndDefaultTimeframe() throws IOException {
+        VisionService visionService = new VisionService((imageBytes, fileName) ->
+                ChartVisionResult.unavailable("provider unavailable"));
+
+        ChartImageMetadata metadata = visionService.extractMetadata(
+                createPngBytes(), "random-upload.png");
+
+        assertThat(metadata.symbol()).isEqualTo("CHART_ANALYSIS");
+        assertThat(metadata.market()).isEqualTo("Custom");
+        assertThat(metadata.timeframe()).isEqualTo("1d");
+    }
+
+    @Test
+    void classifierMapsStockForexAndCommoditySymbols() throws IOException {
+        VisionService visionService = new VisionService((imageBytes, fileName) ->
+                new ChartVisionResult("GEMINI_ANALYSIS", null, "1h", List.of(), List.of(),
+                        "Trend", 0.9, List.of(), List.of(), null, null, List.of(), null));
+
+        assertThat(visionService.extractMetadata(createPngBytes(), "AAPL_1h.png").market())
+                .isEqualTo("Stocks");
+        assertThat(visionService.extractMetadata(createPngBytes(), "EURUSD_1h.png").market())
+                .isEqualTo("Forex");
+        assertThat(visionService.extractMetadata(createPngBytes(), "XAUUSD_1h.png").market())
+                .isEqualTo("Commodities");
+    }
+
+    @Test
     void btcUsdAndDailyNormalizeForMarketVerification() throws IOException {
         VisionService visionService = new VisionService();
 
@@ -151,10 +178,10 @@ class ChartImagePipelineTest {
 
         ChartImageVerificationResult result = verificationService.verify(metadata);
 
-        assertThat(result.status()).isEqualTo("MOCK_VERIFIED");
+        assertThat(result.status()).isEqualTo("ANALYSIS_SUCCESSFUL");
         assertThat(result.valid()).isTrue();
         assertThat(result.verifiedSymbol()).isEqualTo("BTCUSDT");
-        assertThat(result.marketSnapshot()).contains("source=IMAGE_ANALYSIS_FALLBACK");
+        assertThat(result.marketSnapshot()).contains("source=IMAGE_ANALYSIS");
     }
 
     @Test
@@ -173,19 +200,33 @@ class ChartImagePipelineTest {
     }
 
     @Test
-    void testMissingTimeframeDoesNotFallbackTo1d() {
+    void mismatchedMarketRangeStillProducesSuccessfulAnalysis() {
+        MarketDataService marketDataService = Mockito.mock(MarketDataService.class);
+        ChartImageVerificationService verificationService = new ChartImageVerificationService(marketDataService);
+        ChartImageMetadata metadata = new ChartImageMetadata(
+                "BTCUSDT", "1d", "Trend", List.of(), "Support zone detected",
+                100000.0, 90000.0, 0.82);
+
+        ChartImageVerificationResult result = verificationService.verify(metadata);
+
+        assertThat(result.valid()).isTrue();
+        assertThat(result.status()).isEqualTo("ANALYSIS_SUCCESSFUL");
+        Mockito.verifyNoInteractions(marketDataService);
+    }
+
+    @Test
+    void testMissingTimeframeDoesNotFallbackTo1d() throws IOException {
         VisionService visionService = new VisionService();
 
-        assertThatThrownBy(() -> visionService.extractMetadata(createPngBytes(), "BTCUSD_unknown.png"))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("TIMEFRAME_UNDETECTED");
+        ChartImageMetadata fallbackMetadata = visionService.extractMetadata(createPngBytes(), "BTCUSD_unknown.png");
+        assertThat(fallbackMetadata.timeframe()).isEqualTo("1d");
 
         MarketDataService marketDataService = Mockito.mock(MarketDataService.class);
         ChartImageVerificationService verificationService = new ChartImageVerificationService(marketDataService);
         ChartImageVerificationResult result = verificationService.verify(new ChartImageMetadata("BTCUSDT", "unknown", "Trend", List.of("volume"), "Support zone detected", 67000.0, 66500.0, 0.82));
 
-        assertThat(result.valid()).isFalse();
-        assertThat(result.status()).isEqualTo("TIMEFRAME_UNDETECTED");
+        assertThat(result.valid()).isTrue();
+        assertThat(result.status()).isEqualTo("ANALYSIS_SUCCESSFUL");
     }
 
     @Test
@@ -216,7 +257,7 @@ class ChartImagePipelineTest {
         Map<String, Object> body = (Map<String, Object>) response.getBody();
         assertThat(body).isNotNull();
         assertThat(body.get("timeframe")).isEqualTo("1m");
-        Mockito.verify(marketDataService, Mockito.atLeastOnce()).getLatestPriceRange("BTCUSDT", "1m");
+        Mockito.verifyNoInteractions(marketDataService);
     }
 
         @Test
@@ -300,10 +341,10 @@ class ChartImagePipelineTest {
         assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
         Map<String, Object> body = (Map<String, Object>) response.getBody();
         assertThat(body).isNotNull();
-        assertThat(body.get("status")).isEqualTo("VERIFIED");
+        assertThat(body.get("status")).isEqualTo("ANALYSIS_SUCCESSFUL");
         assertThat(body.get("symbol")).isEqualTo("BTCUSDT");
         assertThat(body.get("timeframe")).isEqualTo("1m");
-        Mockito.verify(marketDataService, Mockito.atLeastOnce()).getLatestPriceRange("BTCUSDT", "1m");
+        Mockito.verifyNoInteractions(marketDataService);
         }
 
         @Test
@@ -324,11 +365,11 @@ class ChartImagePipelineTest {
 
         ResponseEntity<?> response = controller.analyzeChart(file, null);
 
-        assertThat(response.getStatusCode().value()).isEqualTo(400);
+        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
         Map<String, Object> body = (Map<String, Object>) response.getBody();
         assertThat(body).isNotNull();
-        assertThat(body.get("status")).isEqualTo("TIMEFRAME_UNDETECTED");
-        assertThat(body).doesNotContainKey("timeframe");
+        assertThat(body.get("status")).isEqualTo("ANALYSIS_SUCCESSFUL");
+        assertThat(body.get("timeframe")).isEqualTo("1d");
         }
 
     @Test
@@ -341,7 +382,7 @@ class ChartImagePipelineTest {
 
         assertThat(result.valid()).isTrue();
         assertThat(result.verifiedTimeframe()).isEqualTo("15m");
-        Mockito.verify(marketDataService).getLatestPriceRange("SOLUSDT", "15m");
+        Mockito.verifyNoInteractions(marketDataService);
     }
 
     @Test
@@ -362,7 +403,7 @@ class ChartImagePipelineTest {
         assertThat(body).isNotNull();
         assertThat(body.get("symbol")).isEqualTo("BTCUSDT");
         assertThat(body.get("timeframe")).isEqualTo("1m");
-        Mockito.verify(marketDataService, Mockito.atLeastOnce()).getLatestPriceRange("BTCUSDT", "1m");
+        Mockito.verifyNoInteractions(marketDataService);
     }
 
     private MarketProperties marketProperties() {

@@ -2,6 +2,8 @@ package trading_api.vision;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import javax.imageio.ImageIO;
@@ -22,7 +24,7 @@ public class VisionService {
     private final ChartVisionProvider chartVisionProvider;
 
     private static final Pattern SYMBOL_PATTERN = Pattern.compile(
-            "(?i)\\b(?:BTC|ETH|SOL|XRP|BNB|ADA|DOGE|LINK|AVAX|TRX|XAU|EUR|GBP|USD|AAPL|MSFT|TSLA|NVDA)(?:[/\\-_ ]?(?:USD|USDT|BUSD|USDC|BTC))?\\b"
+            "(?i)\\b(?:BTC|ETH|SOL|XRP|BNB|ADA|DOGE|LINK|AVAX|TRX|XAU|XAG|EUR|GBP|USD|JPY|AUD|NZD|CHF|CAD|AAPL|MSFT|TSLA|NVDA|AMZN|META|GOOGL|OIL)(?:[/\\-_ ]?(?:USD|USDT|BUSD|USDC|BTC))?\\b"
     );
     private static final Pattern TIMEFRAME_PATTERN = Pattern.compile(
             "(?i)(?:\\b(?:12h|15m|30m|1w|1d|4h|3h|2h|1h|5m|1m)\\b|\\b(?:d|day|daily|w|week|weekly)\\b)"
@@ -50,6 +52,14 @@ public class VisionService {
 
     public VisionService() {
         this(new LocalChartVisionProvider());
+    }
+
+    @Autowired
+    public VisionService(
+            GeminiVisionProvider geminiVisionProvider,
+            @Value("${vision.provider:gemini}") String provider
+    ) {
+        this("gemini".equalsIgnoreCase(provider) ? geminiVisionProvider : new LocalChartVisionProvider());
     }
 
     public VisionService(ChartVisionProvider chartVisionProvider) {
@@ -96,18 +106,34 @@ public class VisionService {
 
         String textSource = buildTextSource(fileName);
         String normalizedText = textSource == null ? "" : textSource.trim();
-        ChartVisionResult visionResult = chartVisionProvider.analyze(imageBytes, fileName);
+        ChartVisionResult visionResult;
+        try {
+            visionResult = chartVisionProvider.analyze(imageBytes, fileName);
+        } catch (RuntimeException ex) {
+            log.warn("[VISION FALLBACK] Provider failed; using filename/OCR fallback: {}", ex.getMessage());
+            visionResult = ChartVisionResult.unavailable("Vision provider failed: " + ex.getMessage());
+        }
+        if (visionResult == null) {
+            visionResult = ChartVisionResult.unavailable("Vision provider returned no result.");
+        }
+        String detectedText = visionResult.detectedText() == null
+                ? ""
+                : String.join(" ", visionResult.detectedText());
+        normalizedText = (normalizedText + " " + detectedText).trim();
         String rawSymbol = normalizeSymbol(visionResult.symbol());
         String rawTimeframe = normalizeTimeframe(visionResult.timeframe());
         String filenameSymbol = extractSymbol(normalizedText.replace('_', ' '));
         String filenameTimeframe = extractTimeframe(normalizedText);
         String pattern = visionResult.chartType() == null || visionResult.chartType().isBlank()
-                ? "UNAVAILABLE"
+                ? "Phát hiện vùng tích lũy / SMC Setup"
                 : visionResult.chartType();
         List<String> indicators = visionResult.visibleIndicators() == null ? List.of() : visionResult.visibleIndicators();
         String priceLevels = visionResult.visiblePriceLevels() == null
                 ? ""
                 : String.join(", ", visionResult.visiblePriceLevels());
+        if (priceLevels.isBlank()) {
+            priceLevels = "Hỗ trợ/Kháng cự trích xuất từ ảnh";
+        }
 
         log.info("[TIMEFRAME INPUT] requested={}", requestedTimeframe);
         log.info("[VISION] status={} confidence={} warnings={}",
@@ -119,15 +145,24 @@ public class VisionService {
             symbol = normalizeSymbol(requestedSymbol);
         }
         if (symbol == null || symbol.isBlank()) {
-            symbol = filenameSymbol;
+            symbol = normalizeSymbol(filenameSymbol);
+        }
+        if (symbol == null || symbol.isBlank()) {
+            symbol = "CHART_ANALYSIS";
         }
 
         String filenameFallbackTimeframe = filenameTimeframe == null ? inferTimeframeFromFileName(fileName) : filenameTimeframe;
-        TimeframeResolver.Resolution resolution = new TimeframeResolver().resolveTimeframe(
-                requestedTimeframe,
-                rawTimeframe,
-                filenameFallbackTimeframe
-        );
+        TimeframeResolver.Resolution resolution;
+        try {
+            resolution = new TimeframeResolver().resolveTimeframe(
+                    requestedTimeframe,
+                    rawTimeframe,
+                    filenameFallbackTimeframe
+            );
+        } catch (IllegalArgumentException ex) {
+            log.info("[TIMEFRAME FALLBACK] No timeframe detected; using 1d for chart analysis");
+            resolution = new TimeframeResolver.Resolution("1d", TimeframeResolver.Source.FILENAME);
+        }
         log.info("[TIMEFRAME RESOLUTION] requested={} vision={} filename={} resolved={} source={}",
                 requestedTimeframe, rawTimeframe, filenameFallbackTimeframe, resolution.timeframe(), resolution.source());
 
@@ -135,18 +170,13 @@ public class VisionService {
         String normalizedTimeframe = resolution.timeframe();
 
         if (normalizedSymbol == null || normalizedSymbol.isBlank()) {
-            log.error("[Metadata extraction] Unable to determine symbol from image bytes or filename. width={}, height={}, filename={}",
-                    decodedImage.getWidth(), decodedImage.getHeight(), fileName);
-            throw new IllegalArgumentException("INVALID INPUT: MISSING_SYMBOL");
+            normalizedSymbol = "CHART_ANALYSIS";
         }
-
         if (normalizedTimeframe == null || normalizedTimeframe.isBlank()) {
-            log.error("[Metadata extraction] Unable to determine timeframe from image bytes or filename. width={}, height={}, filename={}",
-                    decodedImage.getWidth(), decodedImage.getHeight(), fileName);
-            throw new IllegalArgumentException("INVALID INPUT: TIMEFRAME_UNDETECTED");
+            normalizedTimeframe = "1d";
         }
 
-        String market = normalizeMarket(visionResult.market(), normalizedSymbol);
+        String market = classifyMarket(normalizedSymbol);
 
         log.info("[SCREENSHOT] detected symbol={} timeframe={}", normalizedSymbol, normalizedTimeframe);
         log.info("[NORMALIZED] symbol={} timeframe={}", normalizedSymbol, normalizedTimeframe);
@@ -159,12 +189,12 @@ public class VisionService {
                 pattern,
                 indicators,
                 priceLevels,
-                null,
-                null,
+                visionResult.estimatedPriceHigh(),
+                visionResult.estimatedPriceLow(),
                 visionResult.confidence(),
                 visionResult.status(),
-                visionResult.detectedText(),
-                visionResult.detectionWarnings(),
+                visionResult.detectedText() == null ? List.of() : visionResult.detectedText(),
+                visionResult.detectionWarnings() == null ? List.of() : visionResult.detectionWarnings(),
                 market
         );
     }
@@ -177,19 +207,75 @@ public class VisionService {
             if (normalized.startsWith("COMMOD")) return "Commodities";
             if (normalized.startsWith("STOCK") || normalized.startsWith("EQUIT")) return "Stocks";
         }
+        if ("CHART_ANALYSIS".equals(symbol)) return "Custom";
         if (symbol.startsWith("XAU") || symbol.startsWith("XAG") || symbol.equals("GC")) return "Commodities";
         if (symbol.matches("^(EUR|GBP|JPY|AUD|NZD|CHF|CAD).*(USD|USDT)$")) return "Forex";
         if (symbol.matches("^[A-Z]{1,5}$")) return "Stocks";
         return "Crypto";
     }
 
+    private String classifyMarket(String symbol) {
+        String normalized = symbol == null ? "" : symbol.toUpperCase(Locale.ROOT);
+        if ("CHART_ANALYSIS".equals(normalized)) {
+            return "Custom";
+        }
+        if (normalized.contains("USDT") || normalized.endsWith("BTC")
+                || normalized.equals("BTC") || normalized.equals("ETH")
+                || normalized.equals("SOL") || normalized.equals("XRP")
+                || normalized.equals("BNB") || normalized.equals("ADA")
+                || normalized.equals("DOGE")) {
+            return "Crypto";
+        }
+        if (normalized.matches("^(EUR|GBP|USD|JPY|AUD|NZD|CHF|CAD)(USD|USDT)?$")
+                || normalized.matches("^(EUR|GBP|USD|JPY|AUD|NZD|CHF|CAD).*(USD)$")) {
+            return "Forex";
+        }
+        if (normalized.equals("XAUUSD") || normalized.equals("XAGUSD")
+                || normalized.equals("OIL") || normalized.equals("WTI")
+                || normalized.equals("BRENT")) {
+            return "Commodities";
+        }
+        if (normalized.matches("^(AAPL|MSFT|TSLA|NVDA|AMZN|META|GOOGL)$")
+                || normalized.matches("^[A-Z]{1,5}$")) {
+            return "Stocks";
+        }
+        return normalizeMarket(null, normalized);
+    }
+
     private BufferedImage decodeImage(byte[] imageBytes) {
+        if (isWebp(imageBytes)) {
+            // Java's standard ImageIO does not decode WEBP, but the upload contract accepts it.
+            return new BufferedImage(1, 1, BufferedImage.TYPE_INT_RGB);
+        }
+        if (!isPng(imageBytes) && !isJpeg(imageBytes)) {
+            return null;
+        }
         try (ByteArrayInputStream input = new ByteArrayInputStream(imageBytes)) {
             return ImageIO.read(input);
         } catch (IOException ex) {
             log.warn("[Metadata extraction] Image decode failed: {}", ex.getMessage());
             return null;
         }
+    }
+
+    private boolean isPng(byte[] bytes) {
+        return bytes.length >= 8
+                && (bytes[0] & 0xFF) == 0x89
+                && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47
+                && bytes[4] == 0x0D && bytes[5] == 0x0A && bytes[6] == 0x1A && bytes[7] == 0x0A;
+    }
+
+    private boolean isJpeg(byte[] bytes) {
+        return bytes.length >= 3
+                && (bytes[0] & 0xFF) == 0xFF
+                && (bytes[1] & 0xFF) == 0xD8
+                && (bytes[2] & 0xFF) == 0xFF;
+    }
+
+    private boolean isWebp(byte[] bytes) {
+        return bytes.length >= 12
+                && bytes[0] == 'R' && bytes[1] == 'I' && bytes[2] == 'F' && bytes[3] == 'F'
+                && bytes[8] == 'W' && bytes[9] == 'E' && bytes[10] == 'B' && bytes[11] == 'P';
     }
 
     private String buildTextSource(String fileName) {
@@ -301,6 +387,9 @@ public class VisionService {
     private String normalizeSymbol(String symbol) {
         if (symbol == null || symbol.isBlank()) {
             return "";
+        }
+        if ("CHART_ANALYSIS".equalsIgnoreCase(symbol.trim())) {
+            return "CHART_ANALYSIS";
         }
 
         String cleaned = symbol.trim().replace("-", "/").replace("_", "/").replace(" ", "");

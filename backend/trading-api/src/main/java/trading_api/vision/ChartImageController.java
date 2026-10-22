@@ -68,16 +68,9 @@ public class ChartImageController {
             }
 
             Map<String, Object> response = new LinkedHashMap<>();
-                String responseStatus = "NON_CRYPTO_ASSET_ACCEPTED".equals(result.status())
-                    ? result.status()
-                    : result.valid() && generatedSignal == null
-                    ? "NO_PRICE_DATA"
-                    : result.status();
-                response.put("status", responseStatus);
+                response.put("status", result.status());
             response.put("valid", result.valid());
-                response.put("reason", generatedSignal == null && result.valid()
-                    ? "No reliable price data available from image, live providers, or configured fallback"
-                    : result.reason());
+                response.put("reason", result.reason());
             response.put("symbol", result.verifiedSymbol());
             response.put("market", metadata.market());
             response.put("timeframe", result.verifiedTimeframe());
@@ -92,14 +85,8 @@ public class ChartImageController {
                     "indicatorsVisible", metadata.indicatorsVisible()
             ));
             response.put("marketSnapshot", result.marketSnapshot());
-                response.put("verification", "NON_CRYPTO_ASSET_ACCEPTED".equals(result.status())
-                    ? "Accepted from Vision metadata"
-                    : result.valid() && !"MOCK_VERIFIED".equals(result.status())
-                    ? "Verified with Live Market Data"
-                    : result.status());
-            response.put("sourceOfTruth", "NON_CRYPTO_ASSET_ACCEPTED".equals(result.status())
-                    ? "Vision metadata / chart analysis"
-                    : "Binance / Market API");
+            response.put("verification", result.status());
+            response.put("sourceOfTruth", "Vision metadata / chart analysis");
                 response.put("vision", Map.of(
                     "status", metadata.visionStatus(),
                     "confidence", metadata.confidence(),

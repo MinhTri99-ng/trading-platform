@@ -16,6 +16,18 @@ app:
     secret: ${JWT_SECRET:change-this-development-secret-to-at-least-32-characters}
     expiration-ms: ${JWT_EXPIRATION_MS:86400000}
 
+gemini:
+  api:
+    key: ${GEMINI_API_KEYS:${GEMINI_API_KEY:AQ_YOUR_API_KEY_HERE}}
+  model: ${GEMINI_MODEL:gemini-2.5-flash}
+
+google:
+  ai:
+    api-key: ${GEMINI_API_KEYS:${GEMINI_API_KEY:AQ_YOUR_API_KEY_HERE}}
+
+vision:
+  provider: ${VISION_PROVIDER:gemini}
+
 market:
   fallback-prices:
     BTCUSDT: 77500
