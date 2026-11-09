@@ -18,6 +18,8 @@ public class TradeSetup {
     @Column(name = "entry_price", precision = 30, scale = 10) private BigDecimal entryPrice;
     @Column(name = "stop_loss", precision = 30, scale = 10) private BigDecimal stopLoss;
     @Column(name = "take_profit", precision = 30, scale = 10) private BigDecimal takeProfit;
+    @Column(name = "risk_reward_ratio", precision = 30, scale = 10) private BigDecimal riskRewardRatio;
+    @Column(length = 8) private String direction;
     @Column(nullable = false, length = 16) private String status;
     @Column(nullable = false, updatable = false) private Instant createdAt = Instant.now();
     public Long getId() { return id; }
@@ -33,6 +35,10 @@ public class TradeSetup {
     public void setStopLoss(BigDecimal stopLoss) { this.stopLoss = stopLoss; }
     public BigDecimal getTakeProfit() { return takeProfit; }
     public void setTakeProfit(BigDecimal takeProfit) { this.takeProfit = takeProfit; }
+    public BigDecimal getRiskRewardRatio() { return riskRewardRatio; }
+    public void setRiskRewardRatio(BigDecimal riskRewardRatio) { this.riskRewardRatio = riskRewardRatio; }
+    public String getDirection() { return direction; }
+    public void setDirection(String direction) { this.direction = direction; }
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
     public Instant getCreatedAt() { return createdAt; }

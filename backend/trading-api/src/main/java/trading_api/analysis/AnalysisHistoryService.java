@@ -1,6 +1,7 @@
 package trading_api.analysis;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import trading_api.auth.User;
 import java.util.List;
 
@@ -9,6 +10,17 @@ public class AnalysisHistoryService {
     private final AnalysisRepository analyses;
     private final TradeSetupRepository setups;
     public AnalysisHistoryService(AnalysisRepository analyses, TradeSetupRepository setups) { this.analyses = analyses; this.setups = setups; }
+    @Transactional
+    public Analysis saveAnalysis(Analysis analysis, TradeSetup tradeSetup) {
+        if (tradeSetup != null) {
+            analysis.addTradeSetup(tradeSetup);
+        }
+        Analysis saved = analyses.save(analysis);
+        if (tradeSetup != null) {
+            setups.save(tradeSetup);
+        }
+        return saved;
+    }
     public List<AnalysisDtos.AnalysisResponse> history(User user) {
         return analyses.findByUserIdOrderByCreatedAtDesc(user.getId()).stream().map(analysis -> toResponse(analysis, user.getId())).toList();
     }
