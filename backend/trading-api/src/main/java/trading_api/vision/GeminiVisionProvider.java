@@ -32,12 +32,11 @@ public class GeminiVisionProvider implements ChartVisionProvider {
 
     public GeminiVisionProvider(
             @Value("${gemini.api.key:AQ_YOUR_API_KEY_HERE}") String apiKey,
-            @Value("${gemini.model:gemini-2.5-flash}") String model,
-            ObjectMapper objectMapper
+            @Value("${gemini.model:gemini-2.5-flash}") String model
     ) {
         this.apiKeys = parseApiKeys(apiKey);
         this.model = model;
-        this.objectMapper = objectMapper;
+        this.objectMapper = new ObjectMapper();
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
@@ -91,6 +90,46 @@ public class GeminiVisionProvider implements ChartVisionProvider {
         } catch (IOException | RuntimeException ex) {
             log.warn("[Gemini Vision] Request or response parsing failed: {}", ex.getMessage());
             return ChartVisionResult.unavailable("Gemini Vision request failed.");
+        }
+    }
+
+    public String generateText(String systemInstruction, String prompt) {
+        if (apiKeys.isEmpty()) {
+            throw new IllegalStateException("Gemini API key is not configured.");
+        }
+
+        try {
+            String requestBody = objectMapper.writeValueAsString(new GeminiTextRequest(
+                    List.of(new Content(List.of(new Part(prompt)))),
+                    new SystemInstruction(List.of(new Part(systemInstruction)))
+            ));
+
+            int startIndex = Math.floorMod(nextKeyIndex.getAndIncrement(), apiKeys.size());
+            for (int attempt = 0; attempt < apiKeys.size(); attempt++) {
+                String key = apiKeys.get((startIndex + attempt) % apiKeys.size());
+                HttpResponse<String> response = sendRequest(requestBody, key);
+                if (response.statusCode() >= 200 && response.statusCode() < 300) {
+                    String text = extractText(response.body());
+                    if (!text.isBlank()) {
+                        return text;
+                    }
+                    log.warn("[Gemini Chat] Key attempt returned empty content; trying next key");
+                    continue;
+                }
+                if (isKeyFailoverResponse(response)) {
+                    log.warn("[Gemini Chat] Key attempt failed with retryable status {}; trying next key",
+                            response.statusCode());
+                    continue;
+                }
+                log.warn("[Gemini Chat] API request failed with non-retryable status {}", response.statusCode());
+                throw new IllegalStateException("Gemini Chat API request failed.");
+            }
+            throw new IllegalStateException("All configured Gemini Chat API keys failed.");
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Gemini Chat request interrupted.", ex);
+        } catch (IOException ex) {
+            throw new IllegalStateException("Gemini Chat request failed.", ex);
         }
     }
 
@@ -214,6 +253,12 @@ public class GeminiVisionProvider implements ChartVisionProvider {
     }
 
     private record GeminiRequest(List<Content> contents) {
+    }
+
+    private record GeminiTextRequest(List<Content> contents, SystemInstruction systemInstruction) {
+    }
+
+    private record SystemInstruction(List<Part> parts) {
     }
 
     private record Content(List<Part> parts) {

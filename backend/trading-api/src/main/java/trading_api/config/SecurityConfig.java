@@ -23,6 +23,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/auth/**", "/public/**", "/error").permitAll()
                         .requestMatchers("/api/market/history/**").authenticated()
                         .requestMatchers("/api/v1/**").authenticated()
+                        .requestMatchers("/api/chat/**").authenticated()
                         .anyRequest().permitAll())
                         .exceptionHandling(exceptions -> exceptions.authenticationEntryPoint(authenticationEntryPoint()))
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)

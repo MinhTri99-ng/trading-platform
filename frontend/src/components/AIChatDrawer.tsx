@@ -10,36 +10,12 @@ type ChatMessage = {
   content: string;
 };
 
-const GEMINI_KEYS = [
-  import.meta.env.VITE_GEMINI_KEY_1,
-  import.meta.env.VITE_GEMINI_KEY_2,
-  import.meta.env.VITE_GEMINI_KEY_3,
-  import.meta.env.VITE_GEMINI_KEY_4,
-  import.meta.env.VITE_GEMINI_KEY_5,
-  import.meta.env.VITE_GEMINI_KEY_6,
-  import.meta.env.VITE_GEMINI_KEY_7,
-  import.meta.env.VITE_GEMINI_KEY_8,
-  import.meta.env.VITE_GEMINI_KEY_9,
-  import.meta.env.VITE_GEMINI_KEY_10,
-]
-  .map((key) => key?.trim())
-  .filter((key): key is string => Boolean(key));
-
-const CANDIDATE_MODELS = [
-  "gemini-2.5-flash",
-  "gemini-2.5-flash-lite",
-  "gemini-2.5-pro",
-] as const;
+const API_BASE_URL = (import.meta.env.VITE_BACKEND_URL ?? "http://localhost:8080").replace(/\/$/, "");
 
 interface AIChatDrawerProps {
   isOpen: boolean;
   onClose: () => void;
 }
-
-const SYSTEM_INSTRUCTION = `Bạn là TradeAI Assistant - Chuyên gia phân tích kỹ thuật Crypto và phương pháp SMC (Smart Money Concepts).
-- Hãy trả lời chi tiết, chuyên nghiệp, rõ ràng bằng tiếng Việt.
-- Sử dụng định dạng Markdown (bôi đen, gạch đầu dòng) để câu trả lời dễ đọc.
-- Nếu người dùng hỏi về xu hướng hoặc giá cả hiện tại, hãy dựa trên kiến thức phân tích kỹ thuật SMC (như Liquidity, Order Block, FVG, Break of Structure) để đưa ra kịch bản phân tích mẫu chuẩn xác chứ không từ chối trả lời.`;
 
 const QUICK_PROMPTS = [
   "Phân tích xu hướng BTC hiện tại",
@@ -55,60 +31,37 @@ const WELCOME_MESSAGE: ChatMessage = {
 
 const createMessageId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-const callGeminiApi = async (apiKey: string, rawModelName: string, userPrompt: string) => {
-  const cleanModel = rawModelName.replace(/models\//g, "").replace(/^\//, "").trim();
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent`;
-  const response = await fetch(url, {
+const readAccessToken = () => {
+  const storageKeys = ["tradeai-access-token", "accessToken"];
+  for (const storage of [localStorage, sessionStorage]) {
+    for (const key of storageKeys) {
+      const token = storage.getItem(key)?.trim();
+      if (token) return token;
+    }
+  }
+  return null;
+};
+
+async function requestChatResponse(contents: Array<{ role: "user" | "model"; parts: Array<{ text: string }> }>) {
+  const token = readAccessToken();
+  const response = await fetch(`${API_BASE_URL}/api/chat/completions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-goog-api-key": apiKey,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({
-      contents: [
-        {
-          parts: [{ text: userPrompt }],
-        },
-      ],
-    }),
+    body: JSON.stringify({ messages: contents.map((content) => ({
+      role: content.role,
+      content: content.parts.map((part) => part.text).join(""),
+    })) }),
   });
 
+  const data = await response.json() as { message?: string };
   if (!response.ok) {
-    const errorData = await response.json() as { error?: { message?: string } };
-    throw new Error(errorData.error?.message || `HTTP ${response.status}`);
+    throw new Error(data.message || `HTTP ${response.status}`);
   }
-
-  const data = await response.json() as {
-    candidates: Array<{ content: { parts: Array<{ text: string }> } }>;
-  };
-  return data.candidates[0].content.parts[0].text;
-};
-
-async function requestGeminiResponse(contents: Array<{ role: "user" | "model"; parts: Array<{ text: string }> }>) {
-  if (GEMINI_KEYS.length === 0) {
-    throw new Error("Thiếu GEMINI_KEY_1 đến GEMINI_KEY_10 trong file .env.local.");
-  }
-
-  const userPrompt = [
-    `System instruction: ${SYSTEM_INSTRUCTION}`,
-    ...contents.map((content) => `${content.role}: ${content.parts.map((part) => part.text).join("")}`),
-  ].join("\n\n");
-
-  for (const [keyIndex, currentKey] of GEMINI_KEYS.entries()) {
-    for (const modelName of CANDIDATE_MODELS) {
-      try {
-        return await callGeminiApi(currentKey, modelName, userPrompt);
-      } catch (error) {
-        console.warn("Gemini request failed; trying next candidate", {
-          apiKeyIndex: keyIndex + 1,
-          model: modelName,
-          error,
-        });
-      }
-    }
-  }
-
-  throw new Error("Hệ thống AI đang bảo trì hoặc đạt giới hạn lưu lượng, vui lòng thử lại sau ít phút.");
+  if (!data.message) throw new Error("Phản hồi AI không hợp lệ.");
+  return data.message;
 }
 export function AIChatDrawer({ isOpen, onClose }: AIChatDrawerProps) {
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([WELCOME_MESSAGE]);
@@ -146,8 +99,7 @@ export function AIChatDrawer({ isOpen, onClose }: AIChatDrawerProps) {
     setIsLoading(true);
 
     try {
-      // Luồng: User gõ -> lưu chatHistory -> gọi Gemini -> nhận response -> cập nhật UI.
-      const assistantText = await requestGeminiResponse(
+      const assistantText = await requestChatResponse(
         nextHistory
           .filter((chatMessage) => chatMessage.id !== "welcome")
           .map((chatMessage) => ({
