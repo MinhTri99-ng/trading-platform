@@ -1,6 +1,8 @@
 package trading_api.market;
 
 import org.springframework.stereotype.Component;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.beans.factory.annotation.Autowired;
 import trading_api.entity.Candle;
 import trading_api.repository.CandleRepository;
 
@@ -16,6 +18,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class CandleAggregator {
 
     private final CandleRepository candleRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     private record CandleKey(String symbol, String timeframe) {}
 
@@ -45,7 +48,16 @@ public class CandleAggregator {
     private final Map<CandleKey, Long> lastUpdateLogTime = new ConcurrentHashMap<>();
 
     public CandleAggregator(CandleRepository candleRepository) {
+        this(candleRepository, null);
+    }
+
+    @Autowired
+    public CandleAggregator(
+            CandleRepository candleRepository,
+            ApplicationEventPublisher eventPublisher
+    ) {
         this.candleRepository = candleRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     public void process(NormalizedTrade trade) {
@@ -96,6 +108,7 @@ public class CandleAggregator {
                         + " | V: " + closedCandle.getVolume());
                 
                 saveClosedCandle(closedCandle);
+                publishClosedCandle(closedCandle);
 
                 Candle newCandle = createNewCandle(trade, timeframe, candleTimestamp);
                 activeCandles.put(key, new CandleState(newCandle, trade.getTimestamp()));
@@ -173,11 +186,18 @@ public class CandleAggregator {
                 } else {
                     System.out.println("⚠️ [CANDLE ALREADY EXISTS] " + candle.getSymbol() + " | " + candle.getTimeframe() + " | timestamp: " + candle.getTimestamp());
                 }
+
             } catch (Exception e) {
                 System.err.println("Failed to save candle to DB: " + e.getMessage());
             }
         } else {
             System.out.println("[Mock mode] Closed candle logged: " + candle.getSymbol() + " " + candle.getTimeframe() + " at " + candle.getTimestamp());
+        }
+    }
+
+    private void publishClosedCandle(Candle candle) {
+        if (eventPublisher != null) {
+            eventPublisher.publishEvent(new KlineClosedEvent(candle));
         }
     }
 

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.io.IOException;
 import java.net.URI;
@@ -18,6 +19,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import trading_api.entity.Candle;
+import trading_api.market.KlineClosedEvent;
+import trading_api.repository.CandleRepository;
 
 @Component
 public class BinanceKlineProxyService {
@@ -26,6 +30,8 @@ public class BinanceKlineProxyService {
 
     private final SimpMessagingTemplate messagingTemplate;
     private final TradingAnalysisService tradingAnalysisService;
+    private final CandleRepository candleRepository;
+    private final ApplicationEventPublisher eventPublisher;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(4);
     private final Map<String, WebSocket> activeConnections = new ConcurrentHashMap<>();
@@ -34,10 +40,14 @@ public class BinanceKlineProxyService {
 
     public BinanceKlineProxyService(
             SimpMessagingTemplate messagingTemplate,
-            TradingAnalysisService tradingAnalysisService
+            TradingAnalysisService tradingAnalysisService,
+            CandleRepository candleRepository,
+            ApplicationEventPublisher eventPublisher
     ) {
         this.messagingTemplate = messagingTemplate;
         this.tradingAnalysisService = tradingAnalysisService;
+        this.candleRepository = candleRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     public void subscribe(String symbol, String interval) {
@@ -170,6 +180,20 @@ public class BinanceKlineProxyService {
 
         messagingTemplate.convertAndSend("/topic/klines/" + streamSymbol.toUpperCase(Locale.ROOT), payload);
         if (isFinal) {
+            Candle closedCandle = new Candle();
+            closedCandle.setSymbol(streamSymbol.toUpperCase(Locale.ROOT));
+            closedCandle.setTimeframe(streamInterval);
+            closedCandle.setTimestamp(java.time.Instant.ofEpochMilli(openTime));
+            closedCandle.setOpen(open);
+            closedCandle.setHigh(high);
+            closedCandle.setLow(low);
+            closedCandle.setClose(close);
+            closedCandle.setVolume(volume);
+            if (!candleRepository.existsBySymbolAndTimeframeAndTimestamp(
+                    closedCandle.getSymbol(), closedCandle.getTimeframe(), closedCandle.getTimestamp())) {
+                candleRepository.save(closedCandle);
+            }
+            eventPublisher.publishEvent(new KlineClosedEvent(closedCandle));
             tradingAnalysisService.process(streamSymbol.toUpperCase(Locale.ROOT), payload);
         }
     }

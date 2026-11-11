@@ -54,4 +54,17 @@ public interface CandleRepository extends JpaRepository<Candle, Long> {
             @Param("symbol") String symbol,
             @Param("timeframe") String timeframe
     );
+
+    @Query("""
+        SELECT c
+        FROM Candle c
+        WHERE c.symbol = :symbol
+        AND c.timeframe = :timeframe
+        ORDER BY c.timestamp DESC
+    """)
+    List<Candle> findLatestCandles(
+            @Param("symbol") String symbol,
+            @Param("timeframe") String timeframe,
+            Pageable pageable
+    );
 }
